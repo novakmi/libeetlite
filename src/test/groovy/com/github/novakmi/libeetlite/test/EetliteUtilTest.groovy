@@ -1,4 +1,6 @@
-package com.github.novakmi.libeetlite
+/* (c) Michal Novák, libeetlite, it.novakmi@gmail.com, see LICENSE file */
+
+package com.github.novakmi.libeetlite.test
 
 import groovy.util.logging.Slf4j
 import org.testng.Assert
