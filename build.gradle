@@ -45,7 +45,7 @@ test {
                 groups {
                     run {
                         include(name: "basic")
-                        include(name: "internet")
+                        exclude(name: "internet")
                     }
                 }
                 classes([:]) {
