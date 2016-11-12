@@ -1,11 +1,13 @@
 /* (c) Michal Novák, libeetlite, it.novakmi@gmail.com, see LICENSE file */
 
 apply plugin: 'groovy'
+apply plugin: 'maven' // to use maven repository
 apply plugin: 'idea' // to generate project+module files for Intellij Idea
 
-group 'com.github.novakmi'
+def groupId = 'com.github.novakmi'
 version '0.1.0'
 sourceCompatibility = '1.6'
+def installDir = file('./install')
 
 repositories {
     maven { url "https://jcenter.bintray.com" } //jcenter repo
@@ -36,6 +38,20 @@ jar {
     }
 }
 
+clean << {  //add to clean task
+    installDir.deleteDir()
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from "${project.projectDir}/src/main"
+}
+
+task groovydocJar(type: Jar, dependsOn: groovydoc) {
+    classifier = 'groovydoc'
+    from groovydoc.destinationDir
+}
+
 
 test {
     systemProperties["testDataDir"] = "${projectDir}/src/test/testData"
@@ -60,6 +76,40 @@ test {
     //        listeners << 'org.uncommons.reportng.JUnitXMLReporter'
     //    }
 }
+
+task prepareInstall(type: Copy, dependsOn: [jar, sourcesJar, groovydocJar]) {
+    installDir.mkdirs()
+    //logger.quiet("externalJars {}", externalJars)
+    from configurations['compile']?.files/*?.findAll { it.absolutePath.indexOf('unspecified') < 0 }*/
+    from "${project.projectDir}/build/libs"
+    into installDir
+}
+
+// zip into build/distributions
+task zipInstall(type: Zip, dependsOn: prepareInstall) {
+    from installDir.toString()
+}
+
+artifacts { // upload also sources and groovydoc
+    archives sourcesJar
+    archives groovydocJar
+}
+
+uploadArchives {  // support to upload to github emulated maven repository
+    def localMavenDir = System.getenv()['LOCAL_MAVEN_DIR']
+    if (!localMavenDir) {
+        logger.error("LOCAL_MAVEN_DIR is not defined! Artifacts will not be exported!")
+    } else {
+        repositories {
+            mavenDeployer {
+                repository(url: "file://localhost/${localMavenDir}/releases")
+                pom.version = version
+                pom.groupId = groupId
+            }
+        }
+    }
+}
+
 
 // http://daniel.gredler.net/2011/08/08/gradle-keeping-libraries-up-to-date/
 // Find any 3rd party libraries which have released new versions
