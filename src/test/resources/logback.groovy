@@ -5,4 +5,4 @@ appender("STDOUT", ConsoleAppender) {
         pattern = "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n"
     }
 }
-root(INFO, ["STDOUT"])   // change log level here to TRACE, DEBUG, INFO, WARN
+root(TRACE, ["STDOUT"])   // change log level here to TRACE, DEBUG, INFO, WARN

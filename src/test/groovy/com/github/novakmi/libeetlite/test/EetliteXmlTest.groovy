@@ -43,7 +43,7 @@ class EetliteXmlTest {
 
         def message = EetXml.makeMsg(config)
 
-        def toSend = message.toString()
+        def toSend = message.xml.toString()
         log.debug "toSend: {}", toSend
         SOAPClient client = new SOAPClient(config.url)
         SOAPResponse response = client.send(toSend)
@@ -54,6 +54,7 @@ class EetliteXmlTest {
 
         def fik = EetXml.processResponse(respText)
         log.trace "fik.size()=${fik.size()}"
+        log.trace "bkp ${message.bkp}"
         Assert.assertEquals(fik.size(), 39)
         Assert.assertTrue(fik.endsWith("ff"))
 

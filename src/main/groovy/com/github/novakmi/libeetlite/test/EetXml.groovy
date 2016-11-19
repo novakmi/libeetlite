@@ -14,29 +14,35 @@ import javax.xml.transform.stream.StreamSource
 @Slf4j
 class EetXml {
 
+    static bkpPattern = /^([0-9a-fA-F]{8}-){4}[0-9a-fA-F]{8}$/
+    static icPattern = /^CZ[0-9]{8,10}$/
+    static idPrefixPattern = /^[0-9a-zA-Z\.,:;\/#\-_ ]/
+    static finPattern = /^((0|-?[1-9]\d{0,7})\.\d\d|-0\.(0[1-9]|[1-9]\d))$/
     // should be in alphabetic order - canonicalization
-    // 1 .. mandatory, 0 .. optional
-    static data_fields = ["celk_trzba"      : 1,
-                          "cerp_zuct"       : 0,
-                          "cest_sluz"       : 0,
-                          "dan1"            : 0,
-                          "dan2"            : 0,
-                          "dan3"            : 0,
-                          "dat_trzby"       : 1,
-                          "dic_popl"        : 1,
-                          "dic_poverujiciho": 0,
-                          "id_pokl"         : 1,
-                          "id_provoz"       : 1,
-                          "porad_cis"       : 1,
-                          "pouzit_zboz1"    : 0,
-                          "pouzit_zboz2"    : 0,
-                          "pouzit_zboz3"    : 0,
-                          "rezim"           : 1,
-                          "urceno_cerp_zuct": 0,
-                          "zakl_dan1"       : 0,
-                          "zakl_dan2"       : 0,
-                          "zakl_dan3"       : 0,
-                          "zakl_nepodl_dph" : 0,
+    // parameter map attributes: opt ... optional?
+    //                           pattern ... regexp
+    static dataFields = ["celk_trzba"      : [opt: 1, pattern: finPattern],
+                         "cerp_zuct"       : [opt: 0, pattern: finPattern],
+                         "cest_sluz"       : [opt: 0, pattern: finPattern],
+                         "dan1"            : [opt: 0, pattern: finPattern],
+                         "dan2"            : [opt: 0, pattern: finPattern],
+                         "dan3"            : [opt: 0, pattern: finPattern],
+                         "dat_trzby"       : [opt: 1],
+                         "dic_popl"        : [opt: 1, pattern: icPattern],
+                         "dic_poverujiciho": [opt: 0, pattern: icPattern],
+                         //"id_pokl"         : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,20}$/],
+                         "id_pokl"         : [opt: 1, pattern: /${idPrefixPattern}{1,20}$/],
+                         "id_provoz"       : [opt: 1, pattern: /^[1-9][0-9]{0,5}$/],
+                         "porad_cis"       : [opt: 1, pattern: /${idPrefixPattern}{1,25}$/],
+                         "pouzit_zboz1"    : [opt: 0, pattern: finPattern],
+                         "pouzit_zboz2"    : [opt: 0, pattern: finPattern],
+                         "pouzit_zboz3"    : [opt: 0, pattern: finPattern],
+                         "rezim"           : [opt: 1, pattern: /^[01]$/],
+                         "urceno_cerp_zuct": [opt: 0, pattern: finPattern],
+                         "zakl_dan1"       : [opt: 0, pattern: finPattern],
+                         "zakl_dan2"       : [opt: 0, pattern: finPattern],
+                         "zakl_dan3"       : [opt: 0, pattern: finPattern],
+                         "zakl_nepodl_dph" : [opt: 0, pattern: finPattern],
     ]
 
     static String indentXml(def xml, def indent = 4) {
@@ -148,16 +154,31 @@ class EetXml {
 
     }
 
-    static makeBody(config, id, date) {
+    static checkPatterns(dataMap) {
+        log.debug "==> checkPatterns dataMap={}", dataMap
+        for (i in dataMap.keySet()) {
+            if (dataFields[i].pattern) {
+                if (dataMap[i] ==~ dataFields[i].pattern) {
+                    log.trace "field ${i} val ${dataMap[i]} matches pattern ${dataFields[i].pattern}"
+                } else {
+                    log.error "field ${i} val ${dataMap[i]} does not match pattern ${dataFields[i].pattern} !"
+                    // TODO
+                }
+            }
+        }
+        log.debug "<== checkPatterns"
+    }
+
+    static makeBody(config, id, date, pkpVal, bkpVal) {
         log.debug "==> makeBody id={}", id
 
         def uuid = UUID.randomUUID()
         def dataMap = [:]
-        for (i in data_fields.keySet()) {
+        for (i in dataFields.keySet()) {
             if (config[i]) {
                 dataMap[i] = config[i]
             } else {
-                if (data_fields[i]) {
+                if (dataFields[i].opt) {
                     log.error "Missing field ${i}!"
                     // TODO error
                 } else {
@@ -166,11 +187,8 @@ class EetXml {
             }
         }
 
-
         log.debug("dataMap ${dataMap}")
-        def pkpValText = EetUtil.makePkp(config)
-        def pkpVal = EetUtil.toBase64(pkpValText)
-        def bkpVal = EetUtil.makeBkp(pkpValText)
+        checkPatterns(dataMap)
 
         def retVal = {
             "soap:Body"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/", "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
@@ -190,8 +208,17 @@ class EetXml {
         return retVal
     }
 
-    static makeMsg(config) {
+    /**
+     *
+     * @param config
+     * @return map with xml and bkp [xml: ..., bkp: ....]
+     */
+    static def makeMsg(config) {
         log.debug "==> makeMsg"
+
+        def retVal = [:]
+        retVal.bkp = null
+        retVal.xml = null
 
         def uniques = [
                 bodyId     : "BodyId+${EetUtil.getUnique()}",
@@ -206,20 +233,34 @@ class EetXml {
         builder.useDoubleQuotes = true
         builder.expandEmptyElements = true
 
-        def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc())
+        def pkpValText = EetUtil.makePkp(config)
+        def pkpVal = EetUtil.toBase64(pkpValText)
+        def bkpVal = EetUtil.makeBkp(pkpValText)
+
+        log.debug "bkpVal ()", bkpVal
+        if (bkpVal ==~ bkpPattern) {
+            log.trace "BKP ${bkpVal} matches pattern ${bkpPattern}"
+        } else {
+            log.error "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!"
+            //TODO
+        }
+        retVal.bkp = bkpVal
+
+        def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc(), pkpVal, bkpVal)
         def body = builder.bind {
             out << bodyClosure
         }
 
-        def retVal = builder.bind {
+        retVal.xml = builder.bind {
             "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
                 out << makeHeader(config, id, body.toString(), uniques)
                 out << bodyClosure
             }
         }
 
-        log.debug(indentXml(retVal, 4))
-        log.debug "<== makeMsg {}", retVal
+        log.debug "xml indented: {}", indentXml(retVal.xml, 4)
+        log.debug "xml {}", retVal.xml
+        log.debug "<== makeMsg bkp {}", retVal.bkp
         return retVal
     }
 
@@ -227,9 +268,9 @@ class EetXml {
         log.debug "==> processResponse {}", response
         def ret
         def envelope = new XmlParser().parseText(response)
-        def potvrzeni = envelope.'**'.find {node -> node.@fik} //find node with 'fik' attribute
-        ret =  potvrzeni.@fik
-        log.debug "<== processResponse ret {}", ret
+        def potvrzeni = envelope.'**'.find { node -> node.@fik } //find node with 'fik' attribute
+        ret = potvrzeni.@fik
+        log.debug "<== processResponse 2 ret {}", ret
         return ret
     }
 }
