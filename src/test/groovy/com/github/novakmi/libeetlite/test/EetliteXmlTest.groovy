@@ -34,7 +34,9 @@ class EetliteXmlTest {
         ]
 
         def config_fix = [
-                cert_popl: "${System.getProperty("testDataDir")}/cert/01000003.p12",
+                cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ00000019.p12",
+                //cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ683555118.p12",
+                //cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ1212121218.p12",
                 cert_pass: "eet",
                 url      : "https://pg.eet.cz:443/eet/services/EETServiceSOAP/v3"
         ]
@@ -55,6 +57,7 @@ class EetliteXmlTest {
         def fik = EetXml.processResponse(respText)
         log.trace "fik.size()=${fik.size()}"
         log.trace "bkp ${message.bkp}"
+        log.trace "rezim ${config.rezim}"
         Assert.assertEquals(fik.size(), 39)
         Assert.assertTrue(fik.endsWith("ff"))
 
