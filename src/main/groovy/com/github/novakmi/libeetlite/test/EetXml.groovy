@@ -245,6 +245,7 @@ class EetXml {
             //TODO
         }
         retVal.bkp = bkpVal
+        retVal.pkp = pkpVal
 
         def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc(), pkpVal, bkpVal)
         def body = builder.bind {
@@ -260,7 +261,9 @@ class EetXml {
 
         log.debug "xml indented: {}", indentXml(retVal.xml, 4)
         log.debug "xml {}", retVal.xml
-        log.debug "<== makeMsg bkp {}", retVal.bkp
+        log.debug "bkp {}", retVal.bkp
+        log.debug "pkp {}", retVal.pkp
+        log.debug "<== makeMsg"
         return retVal
     }
 

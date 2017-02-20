@@ -57,6 +57,7 @@ class EetliteXmlTest {
         def fik = EetXml.processResponse(respText)
         log.trace "fik.size()=${fik.size()}"
         log.trace "bkp ${message.bkp}"
+        log.trace "pkp ${message.pkp}"
         log.trace "rezim ${config.rezim}"
         Assert.assertEquals(fik.size(), 39)
         Assert.assertTrue(fik.endsWith("ff"))

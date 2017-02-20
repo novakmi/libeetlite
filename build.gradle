@@ -5,7 +5,7 @@ apply plugin: 'maven' // to use maven repository
 apply plugin: 'idea' // to generate project+module files for Intellij Idea
 
 def groupId = 'com.github.novakmi'
-version '0.2.0'
+version '0.3.0'
 sourceCompatibility = '1.6'
 def installDir = file('./install')
 
@@ -17,10 +17,10 @@ repositories {
 dependencies {
     compile localGroovy()
     compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.9'
-    testCompile group: 'org.testng', name: 'testng', version: '6.9.4'
-    testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.1.3'
+    testCompile group: 'org.testng', name: 'testng', version: '6.9.9'
+    testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.1'
     testCompile group: 'janino', name: 'janino', version: '2.4.3'
-    testCompile group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.2'
+    testCompile group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
 }
 
 

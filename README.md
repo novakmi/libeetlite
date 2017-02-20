@@ -14,6 +14,9 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2017-02-20 version 0.3.0
+   * knihovna vrací společně se zprávou XML i PKP (které má byt součástí  účtenky), PKP není třeba získávat z XML
+
 * 2016-11-21 version 0.2.0
     * knihovna vrací společně se zprávou XML i BKP (které má byt součástí  účtenky), BKP není třeba získávat z XML
     * vstup většiny parametrů se kontroluje pomocí regexp   
