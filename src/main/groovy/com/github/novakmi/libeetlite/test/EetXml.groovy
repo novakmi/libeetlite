@@ -108,10 +108,9 @@ class EetXml {
         return ret
     }
 
-    static makeHeader(config, id, body, uniques) {
+    static makeHeader(config, id, body, uniques, keyMap) {
         log.debug "==> makeHeader {}", body
-
-        final def keyMap = EetUtil.makeKeyMap(config)
+        
         def binarySecToken = EetUtil.makeSecToken(keyMap)
         def tokenId = "${uniques.tokenId}"
 
@@ -232,8 +231,9 @@ class EetXml {
         def builder = new StreamingMarkupBuilder()
         builder.useDoubleQuotes = true
         builder.expandEmptyElements = true
+        def keyMap = EetUtil.makeKeyMap(config)
 
-        def pkpValText = EetUtil.makePkp(config)
+        def pkpValText = EetUtil.makePkp(config, keyMap)
         def pkpVal = EetUtil.toBase64(pkpValText)
         def bkpVal = EetUtil.makeBkp(pkpValText)
 
@@ -254,7 +254,7 @@ class EetXml {
 
         retVal.xml = builder.bind {
             "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
-                out << makeHeader(config, id, body.toString(), uniques)
+                out << makeHeader(config, id, body.toString(), uniques, keyMap)
                 out << bodyClosure
             }
         }

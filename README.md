@@ -14,6 +14,9 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2017-02-22 version 0.4.0
+  * certikát poplatníka je nyní předáván jako stream (je třeba použít `new FileInputStream(path)`)
+
 * 2017-02-20 version 0.3.0
    * knihovna vrací společně se zprávou XML i PKP (které má byt součástí  účtenky), PKP není třeba získávat z XML
 

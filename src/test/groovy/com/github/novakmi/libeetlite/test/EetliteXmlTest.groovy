@@ -34,7 +34,7 @@ class EetliteXmlTest {
         ]
 
         def config_fix = [
-                cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ00000019.p12",
+                cert_popl: new FileInputStream("${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ00000019.p12"),
                 //cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ683555118.p12",
                 //cert_popl: "${System.getProperty("testDataDir")}/cert/EET_CA1_Playground-CZ1212121218.p12",
                 cert_pass: "eet",

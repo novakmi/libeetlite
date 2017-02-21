@@ -56,7 +56,7 @@ class EetUtil {
         log.trace "==> makeKeyMap"
 
         final KeyStore keystore = KeyStore.getInstance("pkcs12");
-        keystore.load(new FileInputStream(config.cert_popl), config.cert_pass.toCharArray())
+        keystore.load(config.cert_popl, config.cert_pass.toCharArray())
         def al
         def aliases = keystore.aliases()
         if (aliases.hasMoreElements()) {
@@ -124,7 +124,7 @@ class EetUtil {
         return ret
     }
 
-    static def makePkp(config) {
+    static def makePkp(config, keyMap) {
         log.trace "==> makePkp"
 
         def ret
@@ -133,8 +133,7 @@ class EetUtil {
 
         log.trace "config.cert_popl {}", config.cert_popl
         log.trace "config.cert_pass {}", config.cert_pass //comment :-)
-
-        final def keyMap = makeKeyMap(config)
+        
         final Signature signature = Signature.getInstance("SHA256withRSA")
         signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
         signature.update(pkpPlain.getBytes("UTF-8"));
