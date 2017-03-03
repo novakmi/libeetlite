@@ -1,6 +1,6 @@
 /* (c) Michal Novák, libeetlite, it.novakmi@gmail.com, see LICENSE file */
 
-package com.github.novakmi.libeetlite.test
+package com.github.novakmi.libeetlite
 
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder

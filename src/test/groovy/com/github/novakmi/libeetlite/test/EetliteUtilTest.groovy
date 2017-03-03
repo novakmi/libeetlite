@@ -2,6 +2,7 @@
 
 package com.github.novakmi.libeetlite.test
 
+import com.github.novakmi.libeetlite.EetUtil
 import groovy.util.logging.Slf4j
 import org.testng.Assert
 import org.testng.annotations.Test

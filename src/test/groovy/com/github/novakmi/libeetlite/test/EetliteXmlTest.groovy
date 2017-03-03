@@ -2,6 +2,7 @@
 
 package com.github.novakmi.libeetlite.test
 
+import com.github.novakmi.libeetlite.EetXml
 import groovy.util.logging.Slf4j
 import org.testng.Assert
 import org.testng.annotations.Test
@@ -19,13 +20,13 @@ class EetliteXmlTest {
                 porad_cis : "0/6460/ZQ42",
                 dat_trzby : "2016-07-14T18:45:15+02:00",
                 celk_trzba: "7896.00",
+                rezim    : "0",
         ]
 
         def trzba_fix = [
                 dic_popl : "CZ1212121218",
                 id_provoz: "123",
                 id_pokl  : "Q-126-R",
-                rezim    : "0",
         ]
 
         def hlavicka = [
@@ -44,6 +45,7 @@ class EetliteXmlTest {
         def config = hlavicka + trzba_var + trzba_fix + config_fix
 
         def message = EetXml.makeMsg(config)
+        config.cert_popl.close() // close file input stream
 
         def toSend = message.xml.toString()
         log.debug "toSend: {}", toSend
