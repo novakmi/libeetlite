@@ -231,7 +231,7 @@ class EetXml {
      *   bkp ... value of BKP
      *   pkp ... value of PKP
      *   warnings ... warning messages (if any)  - array of Tuple2 objects (kod varovani, text)
-     *   errors ... error messages (if any, failed is set to true) - array of Tuple2 objects (kod chyby, text)
+     *   errors ... error messages (if any, failed is set to true) - array of Tuple2 objects (kod chyby - String, text)
      */
     static def makeMsg(config) {
         log.debug "==> makeMsg"
@@ -266,7 +266,7 @@ class EetXml {
             log.trace "BKP ${bkpVal} matches pattern ${bkpPattern}"
         } else {
             retVal.failed = true
-            def errorMsg = new Tuple2(MsgWarnErrors.BGP_PATTERN.id,
+            def errorMsg = new Tuple2(MsgWarnErrors.BGP_PATTERN.id.toString(),
                     "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!")
             retVal.errors += [errorMsg]
             log.error errorMsg.second
@@ -306,7 +306,7 @@ class EetXml {
      *   failed ... did processing fail (see errors)
      *   fik ... value of FIK
      *   warnings ... warnings (if any) - array of Tuple2 objects (kod varovani, text)
-     *   errors ... error messages (if any failed is set to true) - array of Tuple2 objects (kod chyby, text)
+     *   errors ... error messages (if any failed is set to true) - array of Tuple2 objects (kod chyby - String, text)
      */
     static processResponse(responseXml) {
         log.debug "==> processResponse {}", responseXml
