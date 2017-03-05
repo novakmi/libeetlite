@@ -7,15 +7,22 @@ Groovy knihovna pro podporu vytváření a zpracování XML EET (soap) zpráv.
 
 ## Licence
 
-Aplikace i zdrojové kódy jsou k dispozici zdarma pod MIT licencí. 
+Knihovna i zdrojové kódy jsou k dispozici zdarma pod MIT licencí. 
 Autor nenese jakoukoliv odpovědnost za funkčnost a chování, ani neposkytuje jakoukoliv záruku.
 
 Viz soubor `LICENSE`
 
 ## Changelog
 
-* 2017-02-22 version 0.4.0
-  * certikát poplatníka je nyní předáván jako stream (je třeba použít `new FileInputStream(path)`)
+* 2017-03-06 version 0.4.0
+  * certikát poplatníka je nyní předáván jako stream (je třeba použít `new FileInputStream(path)` a po volání
+   `makeMsg` jej zavřít metodou `close`)
+  * do `EetUtil` přidány pomocné funkce
+    * `encrypt`, `decrypt`
+    * `nowToIso`, `dateToIso`, `isoToDate`
+  * ze jména `package` ostraněn `test`
+  * rozšířenen interface o `failed`, `warnings` (seznam kódů a textů varování) a `errors` (seznam kódů a textů chyb)
+  * pozor, `fik` není vracen jako návratová hodnota, ale jako attribut `ret.fik`   
 
 * 2017-02-20 version 0.3.0
    * knihovna vrací společně se zprávou XML i PKP (které má byt součástí  účtenky), PKP není třeba získávat z XML
@@ -43,6 +50,10 @@ group: `com.github.novakmi`, name: `libeetlite`, version: `<požadovaná verze`
 
 ## Kontakt
 
+Stránky projektu:
+
+https://sites.google.com/view/eetlite
+
 K hlášení chyb, podávání podnětů na zlepšení lze použít:  
 
 https://github.com/novakmi/libeetlite/issues  
@@ -60,4 +71,3 @@ https://github.com/todvora/eet-client
 ## Příklad použití
 
 https://github.com/novakmi/eetlite  
-
