@@ -2,6 +2,7 @@
 
 package com.github.novakmi.libeetlite.test
 
+import com.github.novakmi.libeetlite.EetUtil
 import com.github.novakmi.libeetlite.EetXml
 import groovy.util.logging.Slf4j
 import org.testng.Assert
@@ -21,14 +22,9 @@ class EetliteXmlTest {
         private getTestConfig() {
                 log.trace('==> getTestConfig')
 
-                OffsetDateTime dt = OffsetDateTime.ofInstant(Instant.now().truncatedTo(ChronoUnit.SECONDS),
-                        ZoneId.of("Europe/Prague"))
-                def isoDate = dt.format(DateTimeFormatter.ISO_DATE_TIME)
-                log.trace("isoDate={}", isoDate)
-
                 def trzba_var = [
                         porad_cis : "0/6460/ZQ42",
-                        dat_trzby : isoDate,
+                        dat_trzby : EetUtil.nowToIso(),
                         celk_trzba: "7896.00",
                         rezim     : "0",
                 ]

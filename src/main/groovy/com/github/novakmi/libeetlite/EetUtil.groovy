@@ -10,9 +10,11 @@ import javax.xml.bind.DatatypeConverter
 import java.security.KeyStore
 import java.security.Signature
 import java.security.cert.X509Certificate
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 @Slf4j
 class EetUtil {
@@ -148,6 +150,19 @@ class EetUtil {
         }
         log.trace("<== isoToDate date={}", date)
         return date
+    }
+
+    /**
+     * Get current time in iso format
+     * @return  current time in iso format
+     */
+    public static String nowToIso() {
+        log.trace("==> nowToIso isoDate={}")
+        OffsetDateTime dt = OffsetDateTime.ofInstant(Instant.now().truncatedTo(ChronoUnit.SECONDS),
+                ZoneId.of("Europe/Prague"))
+        def isoDate = dt.format(DateTimeFormatter.ISO_DATE_TIME)
+        log.trace("nowToIso={}", isoDate)
+        return isoDate
     }
 
     /**
