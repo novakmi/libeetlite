@@ -48,13 +48,16 @@ class EetXml {
     static String indentXml(def xml, def indent = 4) {
         log.trace "==> indentXml {} indent", xml, indent
 
-        def factory = TransformerFactory.newInstance()
-        factory.setAttribute("indent-number", indent);
-        Transformer transformer = factory.newTransformer()
-        transformer.setOutputProperty(OutputKeys.INDENT, 'yes')
-        StreamResult result = new StreamResult(new StringWriter())
-        transformer.transform(new StreamSource(new ByteArrayInputStream(xml.toString().bytes)), result)
-        def res = result.writer.toString()
+        def res = null
+        if (xml != null) {
+            def factory = TransformerFactory.newInstance()
+            factory.setAttribute("indent-number", indent);
+            Transformer transformer = factory.newTransformer()
+            transformer.setOutputProperty(OutputKeys.INDENT, 'yes')
+            StreamResult result = new StreamResult(new StringWriter())
+            transformer.transform(new StreamSource(new ByteArrayInputStream(xml.toString().bytes)), result)
+            res = result.writer.toString()
+        }
 
         log.trace "==> indentXml {}", res
         return res
@@ -208,9 +211,27 @@ class EetXml {
     }
 
     /**
+     * Enum for warning and error ids when creating the
+     * XML message
+     */
+    public static enum MsgWarnErrors {
+        BGP_PATTERN(1)
+        final int id
+        public MsgWarnErrors(int val) {
+            id = val
+        }
+    }
+
+    /**
      *
      * @param config
-     * @return map with xml and bkp [xml: ..., bkp: ....]
+     * @return map with attributes
+     *   failed ... did processing fail (see errors)
+     *   xml ... xml to send
+     *   bkp ... value of BKP
+     *   pkp ... value of PKP
+     *   warnings ... warning messages (if any)  - array of Tuple2 objects (kod varovani, text)
+     *   errors ... error messages (if any, failed is set to true) - array of Tuple2 objects (kod chyby, text)
      */
     static def makeMsg(config) {
         log.debug "==> makeMsg"
@@ -218,6 +239,9 @@ class EetXml {
         def retVal = [:]
         retVal.bkp = null
         retVal.xml = null
+        retVal.failed = false
+        retVal.warnings = []
+        retVal.errors = []
 
         def uniques = [
                 bodyId     : "BodyId+${EetUtil.getUnique()}",
@@ -241,39 +265,82 @@ class EetXml {
         if (bkpVal ==~ bkpPattern) {
             log.trace "BKP ${bkpVal} matches pattern ${bkpPattern}"
         } else {
-            log.error "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!"
-            //TODO
+            retVal.failed = true
+            def errorMsg = new Tuple2(MsgWarnErrors.BGP_PATTERN.id,
+                    "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!")
+            retVal.errors += [errorMsg]
+            log.error errorMsg.second
         }
-        retVal.bkp = bkpVal
-        retVal.pkp = pkpVal
+        if (!retVal.failed) {
+            retVal.bkp = bkpVal
+            retVal.pkp = pkpVal
 
-        def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc(), pkpVal, bkpVal)
-        def body = builder.bind {
-            out << bodyClosure
-        }
-
-        retVal.xml = builder.bind {
-            "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
-                out << makeHeader(config, id, body.toString(), uniques, keyMap)
+            def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc(), pkpVal, bkpVal)
+            def body = builder.bind {
                 out << bodyClosure
+            }
+
+            retVal.xml = builder.bind {
+                "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
+                    out << makeHeader(config, id, body.toString(), uniques, keyMap)
+                    out << bodyClosure
+                }
             }
         }
 
+        log.debug "failed {}", retVal.failed
         log.debug "xml indented: {}", indentXml(retVal.xml, 4)
         log.debug "xml {}", retVal.xml
         log.debug "bkp {}", retVal.bkp
         log.debug "pkp {}", retVal.pkp
+        log.trace "errors {}", retVal.errors
+        log.trace "warnings {}", retVal.warnings
         log.debug "<== makeMsg"
         return retVal
     }
 
-    static processResponse(response) {
-        log.debug "==> processResponse {}", response
-        def ret
-        def envelope = new XmlParser().parseText(response)
-        def potvrzeni = envelope.'**'.find { node -> node.@fik } //find node with 'fik' attribute
-        ret = potvrzeni.@fik
-        log.debug "<== processResponse 2 ret {}", ret
-        return ret
+    /**
+     * Process response XML and extract values
+     * @param responseXml
+     * @return map with attributes
+     *   failed ... did processing fail (see errors)
+     *   fik ... value of FIK
+     *   warnings ... warnings (if any) - array of Tuple2 objects (kod varovani, text)
+     *   errors ... error messages (if any failed is set to true) - array of Tuple2 objects (kod chyby, text)
+     */
+    static processResponse(responseXml) {
+        log.debug "==> processResponse {}", responseXml
+        def retVal = [:]
+        retVal.fik = null
+        retVal.failed = false
+        retVal.warnings = [] //
+        retVal.errors = []  //array of Tuple2 objects (kod varovani, text)
+
+        def envelope = new XmlParser().parseText(responseXml)
+        log.trace("envelope={}", envelope)
+        def warnings =  envelope.'**'.findAll { node ->
+            node.name().localPart == "Varovani"
+        }
+        warnings.each { warn ->
+            log.trace("warn={}", warn)
+            retVal.warnings += [new Tuple2(warn.@kod_varov, warn.value()[0])]
+        }
+        def errors = envelope.'**'.findAll { node ->
+            node.name().localPart == "Chyba"
+        }
+        errors.each { error ->
+            log.trace("error={}", error)
+            retVal.errors += [new Tuple2(error.@kod, error.value()[0])]
+            retVal.failed = true
+        }
+        def potvrzeni = envelope.'**'.find { node ->
+            node.@fik
+        } //find node with 'fik' attribute
+        retVal.fik = potvrzeni?.@fik
+        if (retVal.fik == null) {
+            retVal.failed = true
+        }
+        log.debug "<== processResponse ret {}", retVal
+        return retVal
     }
 }

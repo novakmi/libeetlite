@@ -46,6 +46,7 @@ class EetliteXmlTest {
 
         def message = EetXml.makeMsg(config)
         config.cert_popl.close() // close file input stream
+        Assert.assertFalse(message.failed)
 
         def toSend = message.xml.toString()
         log.debug "toSend: {}", toSend
@@ -56,15 +57,19 @@ class EetliteXmlTest {
         def respText = response.text
         log.debug "indented response: {}", EetXml.indentXml(respText)
 
-        def fik = EetXml.processResponse(respText)
-        log.trace "fik.size()=${fik.size()}"
+        def processed = EetXml.processResponse(respText)
+        log.trace("resp={}", processed)
+        log.trace "fik.size()=${processed.fik?.size()}"
+        log.trace "warnings.size()=${processed.warnings?.size()}"
+        log.trace "errors.size()=${processed.errors?.size()}"
         log.trace "bkp ${message.bkp}"
         log.trace "pkp ${message.pkp}"
         log.trace "rezim ${config.rezim}"
-        Assert.assertEquals(fik.size(), 39)
-        Assert.assertTrue(fik.endsWith("ff"))
+        Assert.assertEquals(processed.fik?.size(), 39)
+        Assert.assertTrue(processed.fik?.endsWith("ff"))
+        Assert.assertFalse(processed.failed)
 
-        log.info "<== run fik {}", fik
+        log.info "<== run fik {}", processed.fik
 
         log.trace('<== getFikTest')
     }
