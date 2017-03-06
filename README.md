@@ -14,6 +14,9 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2017-03-06 version 0.4.1
+  * heslo certifikátu se neloguje 
+  
 * 2017-03-06 version 0.4.0
   * certikát poplatníka je nyní předáván jako stream (je třeba použít `new FileInputStream(path)` a po volání
    funkce `makeMsg` jej zavřít metodou `close`)

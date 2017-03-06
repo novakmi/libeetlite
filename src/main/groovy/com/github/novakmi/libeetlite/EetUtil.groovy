@@ -262,7 +262,7 @@ class EetUtil {
         log.trace "pkpPlain {}", pkpPlain
 
         log.trace "config.cert_popl {}", config.cert_popl
-        log.trace "config.cert_pass {}", config.cert_pass //comment :-)
+        //log.trace "config.cert_pass {}", config.cert_pass //comment :-)
         
         final Signature signature = Signature.getInstance("SHA256withRSA")
         signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
