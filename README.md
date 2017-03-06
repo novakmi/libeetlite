@@ -16,13 +16,14 @@ Viz soubor `LICENSE`
 
 * 2017-03-06 version 0.4.0
   * certikát poplatníka je nyní předáván jako stream (je třeba použít `new FileInputStream(path)` a po volání
-   `makeMsg` jej zavřít metodou `close`)
+   funkce `makeMsg` jej zavřít metodou `close`)
   * do `EetUtil` přidány pomocné funkce
     * `encrypt`, `decrypt`
     * `nowToIso`, `dateToIso`, `isoToDate`
   * ze jména `package` ostraněn `test`
-  * rozšířenen interface o `failed`, `warnings` (seznam kódů a textů varování) a `errors` (seznam kódů a textů chyb)
-  * pozor, `fik` není vracen jako návratová hodnota, ale jako attribut `ret.fik`   
+  * rozšířenen interface o příznak `failed`,  pole `warnings` (seznam kódů a textů varování) a 
+    pole `errors` (seznam kódů a textů chyb)
+  * POZOR! `fik` není již vracen jako návratová hodnota, ale jako attribut `ret.fik`   
 
 * 2017-02-20 version 0.3.0
    * knihovna vrací společně se zprávou XML i PKP (které má byt součástí  účtenky), PKP není třeba získávat z XML
