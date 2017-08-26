@@ -16,9 +16,9 @@ repositories {
 
 dependencies {
     compile localGroovy()
-    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.9'
-    testCompile group: 'org.testng', name: 'testng', version: '6.9.9'
-    testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.1'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
+    testCompile group: 'org.testng', name: 'testng', version: '6.11'
+    testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
     testCompile group: 'janino', name: 'janino', version: '2.4.3'
     testCompile group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
 }
@@ -38,7 +38,7 @@ jar {
     }
 }
 
-clean << {  //add to clean task
+clean.doLast {  //add to clean task
     installDir.deleteDir()
 }
 
@@ -114,33 +114,37 @@ uploadArchives {  // support to upload to github emulated maven repository
 // http://daniel.gredler.net/2011/08/08/gradle-keeping-libraries-up-to-date/
 // Find any 3rd party libraries which have released new versions
 // to the central Maven repository since we last upgraded.
-task checkLibVersions << {
-    def checked = [:]
-    allprojects {
-        configurations.each { configuration ->
-            configuration.allDependencies.each { dependency ->
-                def ver = dependency.version
-                if (ver && !ver.contains('SNAPSHOT') && !checked[dependency]) {
-                    def group = dependency.group
-                    def path = group.replace('.', '/')
-                    def name = dependency.name
-                    def url = "http://repo1.maven.org/maven2/$path/$name/maven-metadata.xml"
-                    try {
-                        def metadata = new XmlSlurper().parseText(url.toURL().text)
-                        def versions = metadata.versioning.versions.version.collect { it.text() }
-                        versions.removeAll { it.toLowerCase().contains('alpha') }
-                        versions.removeAll { it.toLowerCase().contains('beta') }
-                        versions.removeAll { it.toLowerCase().contains('rc') }
-                        def newest = versions.max()
-                        if (ver != newest) {
-                            println "$group:$name $ver -> $newest [$versions]"
+task checkLibVersions {
+    doLast {
+        def checked = [:]
+        allprojects {
+            configurations.each { configuration ->
+                configuration.allDependencies.each { dependency ->
+                    def ver = dependency.version
+                    if (ver && !ver.contains('SNAPSHOT') && !checked[dependency]) {
+                        def group = dependency.group
+                        def path = group.replace('.', '/')
+                        def name = dependency.name
+                        def url = "http://repo1.maven.org/maven2/$path/$name/maven-metadata.xml"
+                        try {
+                            def metadata = new XmlSlurper().parseText(url.toURL().text)
+                            def versions = metadata.versioning.versions.version.collect {
+                                it.text()
+                            }
+                            versions.removeAll { it.toLowerCase().contains('alpha') }
+                            versions.removeAll { it.toLowerCase().contains('beta') }
+                            versions.removeAll { it.toLowerCase().contains('rc') }
+                            def newest = versions.last()//versions.max()
+                            if (ver != newest) {
+                                println "$group:$name $ver -> $newest [$versions]"
+                            }
+                        } catch (FileNotFoundException e) {
+                            logger.debug "Unable to download $url: $e.message"
+                        } catch (org.xml.sax.SAXParseException e) {
+                            logger.debug "Unable to parse $url: $e.message"
                         }
-                    } catch (FileNotFoundException e) {
-                        logger.debug "Unable to download $url: $e.message"
-                    } catch (org.xml.sax.SAXParseException e) {
-                        logger.debug "Unable to parse $url: $e.message"
+                        checked[dependency] = true
                     }
-                    checked[dependency] = true
                 }
             }
         }
