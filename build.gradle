@@ -9,17 +9,28 @@ version '0.4.1'
 sourceCompatibility = '1.6'
 def installDir = file('./install')
 
+apply plugin: 'com.github.ben-manes.versions' // gradle dependencyUpdates -Drevision=release
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.15.0'
+    }
+}
+
 repositories {
-    maven { url "https://jcenter.bintray.com" } //jcenter repo
+    jcenter()
     mavenCentral()
 }
 
 dependencies {
     compile localGroovy()
     compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
-    testCompile group: 'org.testng', name: 'testng', version: '6.11'
+    testCompile group: 'org.testng', name: 'testng', version: '6.12'
     testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
-    testCompile group: 'janino', name: 'janino', version: '2.4.3'
+    testCompile group: 'org.codehaus.janino', name: 'janino', version: '3.0.7'
     testCompile group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
 }
 
@@ -105,47 +116,6 @@ uploadArchives {  // support to upload to github emulated maven repository
                 repository(url: "file://localhost/${localMavenDir}/releases")
                 pom.version = version
                 pom.groupId = groupId
-            }
-        }
-    }
-}
-
-
-// http://daniel.gredler.net/2011/08/08/gradle-keeping-libraries-up-to-date/
-// Find any 3rd party libraries which have released new versions
-// to the central Maven repository since we last upgraded.
-task checkLibVersions {
-    doLast {
-        def checked = [:]
-        allprojects {
-            configurations.each { configuration ->
-                configuration.allDependencies.each { dependency ->
-                    def ver = dependency.version
-                    if (ver && !ver.contains('SNAPSHOT') && !checked[dependency]) {
-                        def group = dependency.group
-                        def path = group.replace('.', '/')
-                        def name = dependency.name
-                        def url = "http://repo1.maven.org/maven2/$path/$name/maven-metadata.xml"
-                        try {
-                            def metadata = new XmlSlurper().parseText(url.toURL().text)
-                            def versions = metadata.versioning.versions.version.collect {
-                                it.text()
-                            }
-                            versions.removeAll { it.toLowerCase().contains('alpha') }
-                            versions.removeAll { it.toLowerCase().contains('beta') }
-                            versions.removeAll { it.toLowerCase().contains('rc') }
-                            def newest = versions.last()//versions.max()
-                            if (ver != newest) {
-                                println "$group:$name $ver -> $newest [$versions]"
-                            }
-                        } catch (FileNotFoundException e) {
-                            logger.debug "Unable to download $url: $e.message"
-                        } catch (org.xml.sax.SAXParseException e) {
-                            logger.debug "Unable to parse $url: $e.message"
-                        }
-                        checked[dependency] = true
-                    }
-                }
             }
         }
     }
