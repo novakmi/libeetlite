@@ -193,8 +193,8 @@ class EetUtil {
      * Fix response for "overeni" - remove error caused by "overeni" and set "overeni_ok"
      * @param resp
      */
-    public static void fixOvereni(resp) {
-        log.trace "==> fixOvereni resp={}", resp
+    public static void fixOvereniResponse(resp) {
+        log.trace "==> fixOvereniResponse resp={}", resp
         if (resp.errors.size() == 1) { //check if error code 0 (overeni OK)
             if (resp.errors[0].first == "0") {
                 log.trace "Found 'overeni ok' code 0"
@@ -203,7 +203,7 @@ class EetUtil {
                 resp.overeni_ok = true
             }
         }
-        log.trace "<== fixOvereni resp={}", resp
+        log.trace "<== fixOvereniResponse resp={}", resp
     }
 
     /**
