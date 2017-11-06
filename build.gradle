@@ -5,7 +5,7 @@ apply plugin: 'maven' // to use maven repository
 apply plugin: 'idea' // to generate project+module files for Intellij Idea
 
 def groupId = 'com.github.novakmi'
-version '0.4.2'
+version '0.5.0'
 sourceCompatibility = '1.6'
 def installDir = file('./install')
 
@@ -16,7 +16,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.github.ben-manes:gradle-versions-plugin:0.15.0'
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
     }
 }
 

@@ -14,6 +14,13 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2017-11-07 version 0.5.0
+  * validace oproti  EET XSD schema
+  * aktualizace závislostí
+  * aktualizace gradle wrapper
+  * aktualizace kontroly závislostí v gradle skriptu
+  * přidány pomocné funkce `isZjednodusenyRezim`, `isOvereni`, `fixOvereniResponse`   
+
 * 2017-03-06 version 0.4.1
   * heslo certifikátu se neloguje 
   
