@@ -166,6 +166,47 @@ class EetUtil {
     }
 
     /**
+     * Find out if config has "ZjednodusenyRezim"
+     * @param config
+     * @return true or false
+     */
+    public static boolean isZjednodusenyRezim(config) {
+        log.trace "==> isZjednodusenyRezim config.rezim={}", config.rezim
+        def retVal = config.rezim != "0"
+        log.trace "<== isZjednodusenyRezim retVal={}", retVal
+        return retVal
+    }
+
+    /**
+     * Find out if config has "overeni"
+     * @param config
+     * @return true or false
+     */
+    public static boolean isOvereni(config) {
+        log.trace "==> isOvereni config.overeni={}", config.overeni
+        def retVal = config.overeni != "0"
+        log.trace "<== isOvereni retVal={}", retVal
+        return retVal
+    }
+
+    /**
+     * Fix response for "overeni" - remove error caused by "overeni" and set "overeni_ok"
+     * @param resp
+     */
+    public static void fixOvereni(resp) {
+        log.trace "==> fixOvereni resp={}", resp
+        if (resp.errors.size() == 1) { //check if error code 0 (overeni OK)
+            if (resp.errors[0].first == "0") {
+                log.trace "Found 'overeni ok' code 0"
+                resp.errors = []
+                resp.failed = false
+                resp.overeni_ok = true
+            }
+        }
+        log.trace "<== fixOvereni resp={}", resp
+    }
+
+    /**
      * http://stackoverflow.com/questions/19743851/base64-java-encode-and-decode-a-string
      * (In java 1.8 swe can also use
      *    Base64.getEncoder().withoutPadding().encodeToString(someByteArray);
@@ -272,5 +313,4 @@ class EetUtil {
         log.trace "<== makePkp {}", ret
         return ret
     }
-
 }
