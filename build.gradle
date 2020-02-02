@@ -1,24 +1,31 @@
 /* (c) Michal Novák, libeetlite, it.novakmi@gmail.com, see LICENSE file */
 
-apply plugin: 'groovy'
-apply plugin: 'maven' // to use maven repository
-apply plugin: 'idea' // to generate project+module files for Intellij Idea
-
-def groupId = 'com.github.novakmi'
-version '0.5.0'
-sourceCompatibility = '1.6'
-def installDir = file('./install')
-
-apply plugin: 'com.github.ben-manes.versions' // gradle dependencyUpdates -Drevision=release
-
 buildscript {
     repositories {
         jcenter()
     }
     dependencies {
-        classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.27.0'
     }
 }
+
+plugins {
+    id 'base'
+    id 'groovy'
+//    id 'java-gradle-plugin'
+    id 'idea'
+    id 'com.github.ben-manes.versions' version '0.27.0' // gradle dependencyUpdates -Drevision=release
+    id 'maven' // to use maven repository
+}
+
+def groupId = 'com.github.novakmi'
+version '0.5.1'
+sourceCompatibility = '1.6'
+def installDir = file('./install')
+
+apply plugin: 'com.github.ben-manes.versions' // gradle dependencyUpdates -Drevision=release
+
+
 
 repositories {
     jcenter()
@@ -27,10 +34,10 @@ repositories {
 
 dependencies {
     compile localGroovy()
-    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
-    testCompile group: 'org.testng', name: 'testng', version: '6.12'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
+    testCompile group: 'org.testng', name: 'testng', version: '7.1.1'
     testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
-    testCompile group: 'org.codehaus.janino', name: 'janino', version: '3.0.7'
+    testCompile group: 'org.codehaus.janino', name: 'janino', version: '3.1.0'
     testCompile group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
 }
 
