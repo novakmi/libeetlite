@@ -23,13 +23,8 @@ version '0.5.1'
 sourceCompatibility = '1.6'
 def installDir = file('./install')
 
-apply plugin: 'com.github.ben-manes.versions' // gradle dependencyUpdates -Drevision=release
-
-
-
 repositories {
     jcenter()
-    mavenCentral()
 }
 
 dependencies {
