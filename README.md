@@ -14,8 +14,17 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2020-02-17 version 0.5.1
+
+  * aktualizace certifikatu (pro automaticke testy)
+  * aktualizace gradle build scriptu pro gradle 6.1, maven plugin 
+  * aktualizace gitlab CI scriptu
+  * odstraneni gradle wrapper
+  * aktualizace testů (odstraněna kontrola -ff u FIK z testovacího prostředí - vrací -fa)
+  * aktualizace README a LICENSE
+
 * 2017-11-07 version 0.5.0
-  * validace oproti  EET XSD schema
+  * validace oproti EET XSD schema
   * aktualizace závislostí
   * aktualizace gradle wrapper
   * aktualizace kontroly závislostí v gradle skriptu
