@@ -19,4 +19,13 @@ class EetliteUtilTest {
         log.trace('<== base64Test')
     }
 
+    @Test(groups = ["basic"])
+    public void bytesToHexTest() {
+        log.trace('==> bytesToHexTest')
+        byte[] bytes = [57, 21, 3, 23, -95, -69, -47, -85, -118, -38, 7, 92, 89, -96, 100, -116, 81, 73, 108, -110]
+        def hex = EetUtil.bytesToHex(bytes)
+        Assert.assertEquals(hex, "39150317A1BBD1AB8ADA075C59A0648C51496C92")
+        log.trace('<== bytesToHexTest')
+    }
+
 }

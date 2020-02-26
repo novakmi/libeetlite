@@ -6,7 +6,6 @@ import groovy.util.logging.Slf4j
 
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import javax.xml.bind.DatatypeConverter
 import java.security.KeyStore
 import java.security.Signature
 import java.security.cert.X509Certificate
@@ -217,7 +216,8 @@ class EetUtil {
     static def toBase64(bytes) {
         log.trace "==> toBase64"
 
-        def ret = new String(DatatypeConverter.printBase64Binary(bytes));
+        //def ret = new String(DatatypeConverter.printBase64Binary(bytes)); //before JDK 8
+        def ret = Base64.getEncoder().encodeToString(bytes) //since JDK 8
 
         log.trace "<== toBase64 {}", ret
         return ret
@@ -279,16 +279,25 @@ class EetUtil {
         return ret
     }
 
+    static def bytesToHex(bytes) {
+        log.trace "==> bytesToHex bytes={}", bytes
+
+        StringBuffer sb = new StringBuffer()
+        for (byte b:bytes) { sb.append(String.format("%02X", b))}
+        def ret = sb.toString()
+
+        log.trace "<== bytesToHex ret {}", ret
+        return ret
+    }
+
     static def makeBkp(pkpValText) {
-        log.trace "==> makeBkp"
+        log.trace "==> makeBkp pkpValText={}", pkpValText
 
         final java.security.MessageDigest d = java.security.MessageDigest.getInstance("SHA-1")
-        d.reset();
+        d.reset()
         d.update(pkpValText)
         final byte[] bytes = d.digest()
-        log.trace("bytes {}", bytes)
-        def hex = DatatypeConverter.printHexBinary(bytes)
-        log.trace("hex {}", hex)
+        def hex = bytesToHex(bytes)
         def ret = "${hex[0..7]}-${hex[8..15]}-${hex[16..23]}-${hex[24..31]}-${hex[32..-1]}"
 
         log.trace "<== makeBkp ret {}", ret
@@ -304,7 +313,7 @@ class EetUtil {
 
         log.trace "config.cert_popl {}", config.cert_popl
         //log.trace "config.cert_pass {}", config.cert_pass //comment :-)
-        
+
         final Signature signature = Signature.getInstance("SHA256withRSA")
         signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
         signature.update(pkpPlain.getBytes("UTF-8"));

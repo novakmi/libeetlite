@@ -14,6 +14,12 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
+* 2020-02-26 version 0.6.1
+  * aktualizce pro kompatibilitu s JDK 11 a vyssi
+  * aktualizace zavislosti
+  * mala aktualizace testu
+  * vytvoren soubor gradle.properties, jmeno projektu presunuto z settings.gradle
+
 * 2020-02-17 version 0.5.1
 
   * aktualizace certifikatu (pro automaticke testy)

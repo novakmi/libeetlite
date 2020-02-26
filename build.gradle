@@ -4,47 +4,47 @@ buildscript {
     repositories {
         jcenter()
     }
-    dependencies {
-        classpath 'com.github.ben-manes:gradle-versions-plugin:0.27.0'
-    }
 }
 
 plugins {
     id 'base'
     id 'groovy'
-//    id 'java-gradle-plugin'
     id 'idea'
-    id 'com.github.ben-manes.versions' version '0.27.0' // gradle dependencyUpdates -Drevision=release
+    id 'com.github.ben-manes.versions' version '0.28.0' // gradle dependencyUpdates -Drevision=release
     id 'maven-publish' // to use maven repository
 }
 
-group = 'com.github.novakmi'
-version '0.5.1'
-sourceCompatibility = '1.6'
 def installDir = file('./install')
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+}
 
 repositories {
     jcenter()
 }
 
 dependencies {
-    implementation localGroovy()
+    implementation group: 'org.codehaus.groovy', name: 'groovy', version: "${project.groovyVersion}"
+    implementation group: 'org.codehaus.groovy', name: 'groovy-xml', version: "${project.groovyVersion}"
+    implementation group: 'org.codehaus.groovy', name: 'groovy-dateutil', version: "${project.groovyVersion}"
     implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
+
     testImplementation group: 'org.testng', name: 'testng', version: '7.1.1'
     testImplementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
     testImplementation group: 'org.codehaus.janino', name: 'janino', version: '3.1.0'
     testImplementation group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
 }
 
-
 jar {
-    archiveBaseName = project.name
     manifest {
         attributes(
             'Implementation-Title': project.name,
             'Implementation-Version': project.version,
-            'Specification-Vendor': 'Michal Novak (it.novakmi@gmail.com)',
-            'Built-By': 'it.novakmi',
+            'Specification-Vendor': project.author,
+            'Built-By': project.author,
             'Specification-Title': project.name,
             'Extension-Name': project.name,
             'Specification-Version': project.version
@@ -56,18 +56,10 @@ clean.doLast {  //add to clean task
     installDir.deleteDir()
 }
 
-task sourcesJar(type: Jar) {
-    archiveBaseName = project.name
-    archiveClassifier = 'sources'
-    from "${project.projectDir}/src/main"
-}
-
 task groovydocJar(type: Jar, dependsOn: groovydoc) {
-    archiveBaseName = project.name
     archiveClassifier = 'groovydoc'
     from groovydoc.destinationDir
 }
-
 
 test {
     systemProperties["testDataDir"] = "${projectDir}/src/test/testData"
@@ -95,8 +87,7 @@ test {
 
 task prepareInstall(type: Copy, dependsOn: [jar, sourcesJar, groovydocJar]) {
     installDir.mkdirs()
-    //logger.quiet("externalJars {}", externalJars)
-    from configurations['compile']?.files/*?.findAll { it.absolutePath.indexOf('unspecified') < 0 }*/
+    //from configurations.compileClasspath.files // if we need also dependencies
     from "${project.projectDir}/build/libs"
     into installDir
 }
@@ -104,10 +95,6 @@ task prepareInstall(type: Copy, dependsOn: [jar, sourcesJar, groovydocJar]) {
 // zip into build/distributions
 task zipInstall(type: Zip, dependsOn: prepareInstall) {
     from installDir.toString()
-}
-
-java {
-    withSourcesJar()
 }
 
 publishing {   // use gradle publish
