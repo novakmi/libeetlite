@@ -14,7 +14,7 @@ Viz soubor `LICENSE`
 
 ## Changelog
 
-* 2020-02-26 version 0.6.1
+* 2020-03-03 version 0.6.0
   * aktualizce pro kompatibilitu s JDK 11 a vyssi
   * aktualizace zavislosti
   * mala aktualizace testu
