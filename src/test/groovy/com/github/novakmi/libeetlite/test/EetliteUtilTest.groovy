@@ -28,4 +28,13 @@ class EetliteUtilTest {
         log.trace('<== bytesToHexTest')
     }
 
+    @Test(groups = ["basic"])
+    public void getDateUtcTest() {
+        log.trace('==> getDateUtcTest')
+
+        def date = EetUtil.getDateUtc()
+
+        log.trace('<== getDateUtcTest')
+    }
+
 }
