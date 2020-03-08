@@ -29,7 +29,6 @@ repositories {
 dependencies {
     implementation group: 'org.codehaus.groovy', name: 'groovy', version: "${project.groovyVersion}"
     implementation group: 'org.codehaus.groovy', name: 'groovy-xml', version: "${project.groovyVersion}"
-    implementation group: 'org.codehaus.groovy', name: 'groovy-dateutil', version: "${project.groovyVersion}"
     implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
 
     testImplementation group: 'org.testng', name: 'testng', version: '7.1.1'

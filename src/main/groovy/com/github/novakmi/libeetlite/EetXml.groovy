@@ -51,7 +51,7 @@ class EetXml {
         def res = null
         if (xml != null) {
             def factory = TransformerFactory.newInstance()
-            factory.setAttribute("indent-number", indent);
+            factory.setAttribute("indent-number", indent)
             Transformer transformer = factory.newTransformer()
             transformer.setOutputProperty(OutputKeys.INDENT, 'yes')
             StreamResult result = new StreamResult(new StringWriter())
@@ -113,7 +113,7 @@ class EetXml {
 
     static makeHeader(config, id, body, uniques, keyMap) {
         log.debug "==> makeHeader {}", body
-        
+
         def binarySecToken = EetUtil.makeSecToken(keyMap)
         def tokenId = "${uniques.tokenId}"
 
@@ -214,10 +214,10 @@ class EetXml {
      * Enum for warning and error ids when creating the
      * XML message
      */
-    public static enum MsgWarnErrors {
+    static enum MsgWarnErrors {
         BGP_PATTERN(1)
         final int id
-        public MsgWarnErrors(int val) {
+        MsgWarnErrors(int val) {
             id = val
         }
     }
@@ -257,9 +257,9 @@ class EetXml {
         builder.expandEmptyElements = true
         def keyMap = EetUtil.makeKeyMap(config)
 
-        def pkpValText = EetUtil.makePkp(config, keyMap)
-        def pkpVal = EetUtil.toBase64(pkpValText)
-        def bkpVal = EetUtil.makeBkp(pkpValText)
+        byte[] pkpValBytes = EetUtil.makePkp(config, keyMap)
+        def pkpVal = EetUtil.toBase64(pkpValBytes)
+        def bkpVal = EetUtil.makeBkp(pkpValBytes)
 
         log.debug "bkpVal ()", bkpVal
         if (bkpVal ==~ bkpPattern) {
@@ -269,7 +269,7 @@ class EetXml {
             def errorMsg = new Tuple2(MsgWarnErrors.BGP_PATTERN.id.toString(),
                     "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!")
             retVal.errors += [errorMsg]
-            log.error errorMsg.second
+            log.error errorMsg.getV2()
         }
         if (!retVal.failed) {
             retVal.bkp = bkpVal

@@ -28,13 +28,16 @@ class EetUtil {
     }
 
     /**
-     * https://gist.github.com/kdabir/6bfe265d2f3c2f9b438b
+     * Convert current date into UTC String representation
      * @return
      */
     static def getDateUtc() {
         log.trace "==> getDateUtc"
 
-        def ret = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone("UTC"))
+        def format = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(format)
+        OffsetDateTime dt = OffsetDateTime.ofInstant(Instant.now(),ZoneId.of("UTC"))
+        def ret = dt.format(formatter)
 
         log.trace "<== getDateUtc ret {}", ret
         return ret
@@ -51,15 +54,15 @@ class EetUtil {
     }
 
     private static String byteArrayToHexString(byte[] b) {
-        StringBuffer sb = new StringBuffer(b.length * 2);
+        StringBuffer sb = new StringBuffer(b.length * 2)
         for (int i = 0; i < b.length; i++) {
-            int v = b[i] & 0xff;
+            int v = b[i] & 0xff
             if (v < 16) {
-                sb.append('0');
+                sb.append('0')
             }
-            sb.append(Integer.toHexString(v));
+            sb.append(Integer.toHexString(v))
         }
-        return sb.toString().toUpperCase();
+        return sb.toString().toUpperCase()
     }
 
     // encrupt, decrypt basewd on http://narayanatutorial.com/java-tutorial/how-to-encrypt-and-decrypt-password-in-java
@@ -72,7 +75,7 @@ class EetUtil {
      */
     static String encrypt(str, key, prefix = "") {
         log.trace("==> encrypt")
-        def retVal = null
+
         final String AES = "AES"
         byte[] bytekey = hexStringToByteArray(key)
         SecretKeySpec sks = new SecretKeySpec(bytekey, AES)
@@ -80,7 +83,8 @@ class EetUtil {
         cipher.init(Cipher.ENCRYPT_MODE, sks, cipher.getParameters())
         byte[] encrypted = cipher.doFinal(str.getBytes())
         String encryptedStr = byteArrayToHexString(encrypted)
-        retVal = "${prefix}${encryptedStr}"
+        def retVal = "${prefix}${encryptedStr}"
+
         log.trace("==> encrypt retVal=n/a")
         return retVal
     }
@@ -91,23 +95,25 @@ class EetUtil {
      * @param prefix  if not empty, prefix to remove from encstr before decription
      * @return decrypted string
      */
-    public static String decrypt(encstr, key, prefix="") {
+    static String decrypt(encstr, key, prefix="") {
         log.trace("==> decrypt encstr=n/a")
+
         def lenPref = prefix.length()
         final String AES = "AES"
-        String retVal = null
+        String retVal
         if (encstr.length() > lenPref && encstr.startsWith(prefix)) {
             encstr = encstr[prefix.length()..-1]
-            byte[] bytekey = hexStringToByteArray(key);
-            SecretKeySpec sks = new SecretKeySpec(bytekey, AES);
-            Cipher cipher = Cipher.getInstance(AES);
-            cipher.init(Cipher.DECRYPT_MODE, sks);
-            byte[] decrypted = cipher.doFinal(hexStringToByteArray(encstr));
-            retVal = new String(decrypted);
+            byte[] bytekey = hexStringToByteArray(key)
+            SecretKeySpec sks = new SecretKeySpec(bytekey, AES)
+            Cipher cipher = Cipher.getInstance(AES)
+            cipher.init(Cipher.DECRYPT_MODE, sks)
+            byte[] decrypted = cipher.doFinal(hexStringToByteArray(encstr))
+            retVal = new String(decrypted)
         } else {
             log.trace("Not encrypted? Returning same string")
             retVal = encstr
         }
+
         log.trace("==> decrypt retVal=n/a")
         return retVal
     }
@@ -118,7 +124,7 @@ class EetUtil {
      * @param dateFormatter  date formatter corresponding to date pattern and locale (SimpleDateFormat)
      * @return  date as string in iso format, e.g. "2017-02-28T23:13:00+01:00"
      */
-    public static String dateToIso(date, dateFormatter) {
+    static String dateToIso(String date, dateFormatter) {
         log.trace("==> dateToIso date={}", date)
         String isoDate = null
         if (date && date != "") {
@@ -138,7 +144,7 @@ class EetUtil {
      * @param dateFormatter  formatter corresponding to date pattern and locale (SimpleDateFormat)
      * @return dat string,  e.g. "2017-02-28 23:13"
      */
-    public static String isoToDate(isoDate, dateFormatter) {
+    static String isoToDate(isoDate, dateFormatter) {
         log.trace("==> isoToDate isoDate={}", isoDate)
         String date = null
         if (isoDate && isoDate != "") {
@@ -155,7 +161,7 @@ class EetUtil {
      * Get current time in iso format
      * @return  current time in iso format
      */
-    public static String nowToIso() {
+    static String nowToIso() {
         log.trace("==> nowToIso isoDate={}")
         OffsetDateTime dt = OffsetDateTime.ofInstant(Instant.now().truncatedTo(ChronoUnit.SECONDS),
                 ZoneId.of("Europe/Prague"))
@@ -169,7 +175,7 @@ class EetUtil {
      * @param config
      * @return true or false
      */
-    public static boolean isZjednodusenyRezim(config) {
+    static boolean isZjednodusenyRezim(config) {
         log.trace "==> isZjednodusenyRezim config.rezim={}", config.rezim
         def retVal = config.rezim != "0"
         log.trace "<== isZjednodusenyRezim retVal={}", retVal
@@ -181,7 +187,7 @@ class EetUtil {
      * @param config
      * @return true or false
      */
-    public static boolean isOvereni(config) {
+    static boolean isOvereni(config) {
         log.trace "==> isOvereni config.overeni={}", config.overeni
         def retVal = config.overeni != "0"
         log.trace "<== isOvereni retVal={}", retVal
@@ -192,7 +198,7 @@ class EetUtil {
      * Fix response for "overeni" - remove error caused by "overeni" and set "overeni_ok"
      * @param resp
      */
-    public static void fixOvereniResponse(resp) {
+    static void fixOvereniResponse(resp) {
         log.trace "==> fixOvereniResponse resp={}", resp
         if (resp.errors.size() == 1) { //check if error code 0 (overeni OK)
             if (resp.errors[0].first == "0") {
@@ -226,16 +232,16 @@ class EetUtil {
     static def makeKeyMap(config) {
         log.trace "==> makeKeyMap"
 
-        final KeyStore keystore = KeyStore.getInstance("pkcs12");
+        final KeyStore keystore = KeyStore.getInstance("pkcs12")
         keystore.load(config.cert_popl, config.cert_pass.toCharArray())
-        def al
+        def al = null
         def aliases = keystore.aliases()
         if (aliases.hasMoreElements()) {
-            al = aliases.nextElement();
+            al = aliases.nextElement()
             log.trace "Client alias {}", al
         } else {
             def ex = new Exception("Certificate {} alias not found!", config.cert_popl)
-            log.error ex
+            log.error "Failed to find certificate!", ex
         }
         def keyMap =  [keystore: keystore, alias: al]
 
@@ -246,7 +252,7 @@ class EetUtil {
     static def makeSecToken(keyMap) {
         log.trace  "==> makeSecToken"
 
-        X509Certificate certificate = (X509Certificate) keyMap.keystore.getCertificate(keyMap.alias);
+        X509Certificate certificate = (X509Certificate) keyMap.keystore.getCertificate(keyMap.alias)
         String token = toBase64(certificate.getEncoded())
 
         log.trace  "<== makeSecToken {}", token
@@ -257,7 +263,7 @@ class EetUtil {
         log.trace "==> makeDigestValue {}", body
 
         final java.security.MessageDigest d = java.security.MessageDigest.getInstance("SHA-256")
-        d.reset();
+        d.reset()
         d.update(body.getBytes("UTF-8"))
         final byte[] bytes = d.digest()
         log.trace("bytes {}", bytes)
@@ -272,7 +278,7 @@ class EetUtil {
 
         final Signature signature = Signature.getInstance("SHA256withRSA")
         signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
-        signature.update(signedInfo.getBytes("UTF-8"));
+        signature.update(signedInfo.getBytes("UTF-8"))
         def ret = toBase64(signature.sign())
 
         log.trace "<== makeSignatureValue {}", ret
@@ -290,12 +296,12 @@ class EetUtil {
         return ret
     }
 
-    static def makeBkp(pkpValText) {
-        log.trace "==> makeBkp pkpValText={}", pkpValText
+    static def makeBkp(pkpValBytes) {
+        log.trace "==> makeBkp pkpValBytes={}", pkpValBytes
 
         final java.security.MessageDigest d = java.security.MessageDigest.getInstance("SHA-1")
         d.reset()
-        d.update(pkpValText)
+        d.update(pkpValBytes)
         final byte[] bytes = d.digest()
         def hex = bytesToHex(bytes)
         def ret = "${hex[0..7]}-${hex[8..15]}-${hex[16..23]}-${hex[24..31]}-${hex[32..-1]}"
@@ -316,7 +322,7 @@ class EetUtil {
 
         final Signature signature = Signature.getInstance("SHA256withRSA")
         signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
-        signature.update(pkpPlain.getBytes("UTF-8"));
+        signature.update(pkpPlain.getBytes("UTF-8"))
         ret = signature.sign()
 
         log.trace "<== makePkp {}", ret
