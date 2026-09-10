@@ -1,0 +1,54 @@
+name: Extensive compatibility tests
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Java ${{ matrix.java }} / Groovy ${{ matrix.groovy }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: &compatibility_matrix
+        include:
+          - { os: ubuntu-latest, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
+          - { os: windows-latest, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
+          - { os: macos-13, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
+          - { os: ubuntu-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
+          - { os: windows-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
+          - { os: macos-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ matrix.gradle }}
+      - run: gradle clean check --no-daemon "-PgroovyVersion=${{ matrix.groovy }}"
+
+  internet-tests:
+    name: Internet / Java ${{ matrix.java }} / Groovy ${{ matrix.groovy }} / ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix: *compatibility_matrix
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ matrix.gradle }}
+      - run: gradle internetTest --no-daemon "-PgroovyVersion=${{ matrix.groovy }}"

@@ -1,0 +1,78 @@
+name: Build and test
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "21"
+  GRADLE_VERSION: "9.6.1"
+
+jobs:
+  build-and-test:
+    name: Build and unit/local tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Run build and tests
+        run: gradle clean check --no-daemon
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/test-results/test/
+            build/reports/tests/test/
+          if-no-files-found: ignore
+
+  internet-tests:
+    name: Internet integration tests
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Run internet tests
+        run: gradle internetTest --no-daemon
+
+      - name: Upload internet test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internet-test-reports
+          path: |
+            build/test-results/internetTest/
+            build/reports/tests/internetTest/
+          if-no-files-found: ignore

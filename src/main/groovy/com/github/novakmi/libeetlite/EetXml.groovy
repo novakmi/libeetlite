@@ -4,6 +4,7 @@ package com.github.novakmi.libeetlite
 
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
+import groovy.xml.XmlParser
 
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.Transformer
@@ -14,8 +15,7 @@ import javax.xml.transform.stream.StreamSource
 @Slf4j
 class EetXml {
 
-    static bkpPattern = /^([0-9a-fA-F]{8}-){4}[0-9a-fA-F]{8}$/
-    static icPattern = /^CZ[0-9]{8,10}$/
+    static eicPattern = /^CZ[0-9]{8,10}$/
     static idPrefixPattern = /^[0-9a-zA-Z\.,:;\/#\-_ ]/
     static finPattern = /^((0|-?[1-9]\d{0,7})\.\d\d|-0\.(0[1-9]|[1-9]\d))$/
     // should be in alphabetic order - canonicalization
@@ -23,59 +23,36 @@ class EetXml {
     //                           pattern ... regexp
     static dataFields = ["celk_trzba"      : [opt: 1, pattern: finPattern],
                          "cerp_zuct"       : [opt: 0, pattern: finPattern],
-                         "cest_sluz"       : [opt: 0, pattern: finPattern],
-                         "dan1"            : [opt: 0, pattern: finPattern],
-                         "dan2"            : [opt: 0, pattern: finPattern],
-                         "dan3"            : [opt: 0, pattern: finPattern],
                          "dat_trzby"       : [opt: 1],
-                         "dic_popl"        : [opt: 1, pattern: icPattern],
-                         "dic_poverujiciho": [opt: 0, pattern: icPattern],
-                         //"id_pokl"         : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,20}$/],
-                         "id_pokl"         : [opt: 1, pattern: /${idPrefixPattern}{1,20}$/],
-                         "id_provoz"       : [opt: 1, pattern: /^[1-9][0-9]{0,5}$/],
-                         "porad_cis"       : [opt: 1, pattern: /${idPrefixPattern}{1,25}$/],
-                         "pouzit_zboz1"    : [opt: 0, pattern: finPattern],
-                         "pouzit_zboz2"    : [opt: 0, pattern: finPattern],
-                         "pouzit_zboz3"    : [opt: 0, pattern: finPattern],
-                         "rezim"           : [opt: 1, pattern: /^[01]$/],
-                         "urceno_cerp_zuct": [opt: 0, pattern: finPattern],
-                         "zakl_dan1"       : [opt: 0, pattern: finPattern],
-                         "zakl_dan2"       : [opt: 0, pattern: finPattern],
-                         "zakl_dan3"       : [opt: 0, pattern: finPattern],
-                         "zakl_nepodl_dph" : [opt: 0, pattern: finPattern],
-    ]
+                         "eic_popl"        : [opt: 1, pattern: eicPattern],
+                         "eic_poverujiciho": [opt: 0, pattern: eicPattern],
+                         "id_jednotky"     : [opt: 1, pattern: /^[1-9][0-9]{0,8}$/],
+                         "id_pokl"         : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,20}$/],
+                         "porad_cis"       : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,25}$/],
+                         "povereni_vice_popl": [opt: 0],
+                         "urceno_cerp_zuct": [opt: 0, pattern: finPattern]]
 
     static String indentXml(def xml, def indent = 4) {
         log.trace "==> indentXml {} indent", xml, indent
 
-        def res = null
+        def res = xml?.toString()
         if (xml != null) {
-            def factory = TransformerFactory.newInstance()
-            factory.setAttribute("indent-number", indent)
-            Transformer transformer = factory.newTransformer()
-            transformer.setOutputProperty(OutputKeys.INDENT, 'yes')
-            StreamResult result = new StreamResult(new StringWriter())
-            transformer.transform(new StreamSource(new ByteArrayInputStream(xml.toString().bytes)), result)
-            res = result.writer.toString()
+            try {
+                def factory = TransformerFactory.newInstance()
+                factory.setAttribute("indent-number", indent)
+                Transformer transformer = factory.newTransformer()
+                transformer.setOutputProperty(OutputKeys.INDENT, 'yes')
+                StreamResult result = new StreamResult(new StringWriter())
+                transformer.transform(new StreamSource(new ByteArrayInputStream(xml.toString().bytes)), result)
+                res = result.writer.toString()
+            } catch (Exception e) {
+                log.warn("Text nelze formatovat jako XML: {}", e.message)
+            }
         }
 
-        log.trace "==> indentXml {}", res
+        log.trace "<== indentXml {}", res
         return res
     }
-
-    // TODO not needed, if body is buuild with builder builder.expandEmptyElements = true
-//    static String canonicalizeXml(xml) {
-//        log.trace "==> canonicalizeXml {}", xml
-//
-//        com.sun.org.apache.xml.internal.security.Init.init()
-//        def algo = Canonicalizer.ALGO_ID_C14N_EXCL_OMIT_COMMENTS
-//        Canonicalizer canon = Canonicalizer.getInstance(algo)
-//        def canonXmlBytes = canon.canonicalize(xml.toString().getBytes("UTF-8"))
-//        def canonXmlString = new String(canonXmlBytes)
-//
-//        log.trace "<== canonicalizeXml {}", canonXmlString
-//        return canonXmlString
-//    }
 
     static makeDigest(body) {
         log.debug "==> makeDigest {}", body
@@ -117,33 +94,40 @@ class EetXml {
         def binarySecToken = EetUtil.makeSecToken(keyMap)
         def tokenId = "${uniques.tokenId}"
 
+        // 1. Vygenerujeme nekanonizovaný SignedInfo jako XML objekt/string
         def builder = new StreamingMarkupBuilder()
         builder.expandEmptyElements = true
         builder.useDoubleQuotes = true
-        def signedInfo = builder.bind {
+        def rawSignedInfo = builder.bind {
             out << makeSignedInfo(id, body)
-        }
-        def sigInfo = signedInfo.toString()
-        //def sigInfo = EetXml.canonicalizeXml(signedInfo.toString()) //Signature cannot be canonized!! (not valid TODO)!!
-        def signatureValue = EetUtil.makeSignatureValue(config, keyMap, sigInfo)
+        }.toString()
 
+        // 2. Kanonikalizujeme SignedInfo pomocí C14N (povinné pro XML Signature)
+        def canonicalSignedInfo = EetUtil.canonicalizeXml(rawSignedInfo)
+
+        // 3. Podpis spočítáme z KANONIKALIZOVANÉHO řetězce
+        def signatureValue = EetUtil.makeSignatureValue(config, keyMap, canonicalSignedInfo)
+        //def signatureValue = EetUtil.makeSignatureValue(config, keyMap, rawSignedInfo)
         def retVal = {
             "SOAP-ENV:Header"("xmlns:SOAP-ENV": "http://schemas.xmlsoap.org/soap/envelope/") {
                 "wsse:Security"("xmlns:wsse": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd",
-                        "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
-                        "soap:mustUnderstand": "1") {
+                    "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
+                    "soap:mustUnderstand": "1") {
                     "wsse:BinarySecurityToken"(EncodingType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary",
-                            ValueType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3",
-                            "wsu:Id": tokenId, binarySecToken)
+                        ValueType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3",
+                        "wsu:Id": tokenId, binarySecToken)
                     "ds:Signature"("xmlns:ds": "http://www.w3.org/2000/09/xmldsig#", Id: "${uniques.signatureId}") {
+
+                        // Do výsledného headeru vložíme přímo SignedInfo
                         out << makeSignedInfo(id, body)
+
                         "ds:SignatureValue"(signatureValue)
                         "ds:KeyInfo"(Id: "${uniques.keyId}") {
                             "wsse:SecurityTokenReference"("xmlns:wsse": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd",
-                                    "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
-                                    "wsu:Id": "STR-${uniques.referenceId}") {
+                                "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
+                                "wsu:Id": "STR-${uniques.referenceId}") {
                                 "wsse:Reference"(URI: "#${tokenId}",
-                                        ValueType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3")
+                                    ValueType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3")
                             }
                         }
                     }
@@ -153,7 +137,6 @@ class EetXml {
 
         log.debug "<== makeHeader"
         return retVal
-
     }
 
     static checkPatterns(dataMap) {
@@ -171,7 +154,7 @@ class EetXml {
         log.debug "<== checkPatterns"
     }
 
-    static makeBody(config, id, date, pkpVal, bkpVal) {
+    static makeBody(config, id, date) {
         log.debug "==> makeBody id={}", id
 
         def uuid = UUID.randomUUID()
@@ -193,33 +176,22 @@ class EetXml {
         checkPatterns(dataMap)
 
         def retVal = {
-            "soap:Body"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/", "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
-                    "wsu:Id": "${id}", "xml:id": "${id}") {
-                Trzba(xmlns: "http://fs.mfcr.cz/eet/schema/v3") {
-                    Hlavicka(dat_odesl: date, overeni: config.overeni, prvni_zaslani: config.prvni_zaslani, uuid_zpravy: uuid)
-                    Data(dataMap)
-                    KontrolniKody {
-                        pkp(cipher: "RSA2048", digest: "SHA256", encoding: "base64", pkpVal)
-                        bkp(digest: "SHA1", encoding: "base16", bkpVal)
-                    }
+            // Odstraněn neplatný atribut xml:id
+            "soap:Body"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/",
+                "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
+                "wsu:Id": "${id}") {
+                "Trzba"("xmlns": "http://fs.gov.cz/eet/schema/v4") {
+                    "Hlavicka"(dat_odesl: date, overeni: config.overeni, prvni_zaslani: config.prvni_zaslani, uuid_zpravy: uuid)
+                    "Data"(dataMap)
                 }
             }
         }
 
+        // DŮLEŽITÉ: Nastavení řešení metod na delegate builderu
+        retVal.resolveStrategy = Closure.DELEGATE_FIRST
+
         log.debug "<== makeBody"
         return retVal
-    }
-
-    /**
-     * Enum for warning and error ids when creating the
-     * XML message
-     */
-    static enum MsgWarnErrors {
-        BGP_PATTERN(1)
-        final int id
-        MsgWarnErrors(int val) {
-            id = val
-        }
     }
 
     /**
@@ -228,8 +200,6 @@ class EetXml {
      * @return map with attributes
      *   failed ... did processing fail (see errors)
      *   xml ... xml to send
-     *   bkp ... value of BKP
-     *   pkp ... value of PKP
      *   warnings ... warning messages (if any)  - array of Tuple2 objects (kod varovani, text)
      *   errors ... error messages (if any, failed is set to true) - array of Tuple2 objects (kod chyby - String, text)
      */
@@ -237,18 +207,17 @@ class EetXml {
         log.debug "==> makeMsg"
 
         def retVal = [:]
-        retVal.bkp = null
         retVal.xml = null
         retVal.failed = false
         retVal.warnings = []
         retVal.errors = []
 
         def uniques = [
-                bodyId     : "BodyId+${EetUtil.getUnique()}",
-                tokenId    : "TokenId+${EetUtil.getUnique()}",
-                signatureId: "SigId+${EetUtil.getUnique()}",
-                keyId      : "KeyId+${EetUtil.getUnique()}",
-                referenceId: "RefId+${EetUtil.getUnique()}",
+            bodyId     : "BodyId+${EetUtil.getUnique()}",
+            tokenId    : "TokenId+${EetUtil.getUnique()}",
+            signatureId: "SigId+${EetUtil.getUnique()}",
+            keyId      : "KeyId+${EetUtil.getUnique()}",
+            referenceId: "RefId+${EetUtil.getUnique()}",
         ]
 
         def id = "${uniques.bodyId}"
@@ -257,42 +226,31 @@ class EetXml {
         builder.expandEmptyElements = true
         def keyMap = EetUtil.makeKeyMap(config)
 
-        byte[] pkpValBytes = EetUtil.makePkp(config, keyMap)
-        def pkpVal = EetUtil.toBase64(pkpValBytes)
-        def bkpVal = EetUtil.makeBkp(pkpValBytes)
+        // 1. Sestavení těla zprávy jako řetězce pro výpočet podpisu
+        def bodyClosure = makeBody(config, id, EetUtil.getDateUtc())
+        def bodyXml = builder.bind {
+            bodyClosure.delegate = delegate
+            bodyClosure()
+        }.toString()
 
-        log.debug "bkpVal ()", bkpVal
-        if (bkpVal ==~ bkpPattern) {
-            log.trace "BKP ${bkpVal} matches pattern ${bkpPattern}"
-        } else {
-            retVal.failed = true
-            def errorMsg = new Tuple2(MsgWarnErrors.BGP_PATTERN.id.toString(),
-                    "BKP ${bkpVal} does not match pattern ${bkpPattern} pattern!")
-            retVal.errors += [errorMsg]
-            log.error errorMsg.getV2()
-        }
-        if (!retVal.failed) {
-            retVal.bkp = bkpVal
-            retVal.pkp = pkpVal
+        // 2. Vytvoření hlavičky s podepsaným tělem
+        def headerClosure = makeHeader(config, id, bodyXml, uniques, keyMap)
 
-            def final bodyClosure = makeBody(config, id, EetUtil.getDateUtc(), pkpVal, bkpVal)
-            def body = builder.bind {
-                out << bodyClosure
-            }
+        // 3. Sestavení finální SOAP obálky vložení již hotového bodyXml bez re-evaluace uzávěr
+        def finalXml = builder.bind {
+            "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
+                headerClosure.delegate = delegate
+                headerClosure()
 
-            retVal.xml = builder.bind {
-                "soap:Envelope"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/") {
-                    out << makeHeader(config, id, body.toString(), uniques, keyMap)
-                    out << bodyClosure
-                }
+                mkp.yieldUnescaped(bodyXml)
             }
         }
+
+        retVal.xml = finalXml.toString()
 
         log.debug "failed {}", retVal.failed
         log.debug "xml indented: {}", indentXml(retVal.xml, 4)
         log.debug "xml {}", retVal.xml
-        log.debug "bkp {}", retVal.bkp
-        log.debug "pkp {}", retVal.pkp
         log.trace "errors {}", retVal.errors
         log.trace "warnings {}", retVal.warnings
         log.debug "<== makeMsg"
@@ -304,42 +262,96 @@ class EetXml {
      * @param responseXml
      * @return map with attributes
      *   failed ... did processing fail (see errors)
-     *   fik ... value of FIK
+     *   pok ... value of POK
      *   warnings ... warnings (if any) - array of Tuple2 objects (kod varovani, text)
      *   errors ... error messages (if any failed is set to true) - array of Tuple2 objects (kod chyby - String, text)
      */
     static processResponse(responseXml) {
         log.debug "==> processResponse {}", responseXml
         def retVal = [:]
-        retVal.fik = null
+        retVal.pok = null
         retVal.failed = false
-        retVal.warnings = [] //
-        retVal.errors = []  //array of Tuple2 objects (kod varovani, text)
+        retVal.overeni_ok = false
+        retVal.warnings = []
+        retVal.errors = []  // array of Tuple2 objects (kod, text)
 
-        def envelope = new XmlParser().parseText(responseXml)
+        log.debug("Raw responseXml: {}", responseXml)
+
+        if (responseXml == null || responseXml.trim().startsWith("<!DOCTYPE html") || responseXml.trim().startsWith("<html")) {
+            log.error("Server nevrátil SOAP XML, ale HTML stránku: {}", responseXml)
+            return [failed: true, errors: [[-1, "Server vrátil HTML místo SOAP XML"]]]
+        }
+
+        // 1. Konfigurace a POUŽITÍ parseru
+        def parser = new XmlParser(false, false)
+        parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
+        parser.setFeature("http://xml.org/sax/features/external-general-entities", false)
+        parser.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+
+        def envelope = parser.parseText(responseXml)
         log.trace("envelope={}", envelope)
-        def warnings =  envelope.'**'.findAll { node ->
-            node.name().localPart == "Varovani"
+
+        // Robustní vyhodnocení jména uzlu nebo atributu (odstraní prefiks "eet:" i zpracuje QName)
+        def extractLocalName = { obj ->
+            if (obj == null) return ""
+            if (obj instanceof groovy.namespace.QName) return obj.localPart
+            String str = obj.toString()
+            int idx = str.indexOf(":")
+            return idx >= 0 ? str.substring(idx + 1) : str
+        }
+
+        // 2. Extrakce Varovani
+        def warnings = envelope.'**'.findAll { node ->
+            extractLocalName(node.name()) == "Varovani"
         }
         warnings.each { warn ->
             log.trace("warn={}", warn)
-            retVal.warnings += [new Tuple2(warn.@kod_varov, warn.value()[0])]
+            def textVal = warn.value() ? warn.value()[0].toString() : ""
+            retVal.warnings += [new Tuple2(warn.@kod_varov?.toString(), textVal)]
         }
+
+        // 3. Extrakce Chyba
         def errors = envelope.'**'.findAll { node ->
-            node.name().localPart == "Chyba"
+            extractLocalName(node.name()) == "Chyba"
         }
         errors.each { error ->
             log.trace("error={}", error)
-            retVal.errors += [new Tuple2(error.@kod, error.value()[0])]
+            def textVal = error.value() ? error.value()[0].toString() : ""
+            retVal.errors += [new Tuple2(error.@kod?.toString(), textVal)]
             retVal.failed = true
         }
+
+        // 4. Extrakce Potvrzeni a POK
         def potvrzeni = envelope.'**'.find { node ->
-            node.@fik
-        } //find node with 'fik' attribute
-        retVal.fik = potvrzeni?.@fik
-        if (retVal.fik == null) {
+            extractLocalName(node.name()) == "Potvrzeni"
+        }
+
+        // Node.attribute('pok') extracts the raw String attribute cleanly
+        if (potvrzeni != null) {
+            log.info("Našel jsem Potvrzeni uzel: name={}, attrs={}", potvrzeni.name(), potvrzeni.attributes())
+            // Získání atributu 'pok'
+            def pokEntry = potvrzeni.attributes().find { k, v ->
+                extractLocalName(k) == "pok"
+            }
+
+            if (pokEntry != null) {
+                retVal.pok = pokEntry.value?.toString()
+            }
+        } else {
+            log.info("Nenalezen uzel Potvrzeni")
+        }
+
+        // 5. Vyhodnocení stavu
+        if (retVal.pok != null) {
+            retVal.failed = false
+        } else if (retVal.errors.size() == 1 && retVal.errors[0].first == "0") {
+            retVal.errors = []
+            retVal.overeni_ok = true
+            retVal.failed = false
+        } else {
             retVal.failed = true
         }
+
         log.debug "<== processResponse ret {}", retVal
         return retVal
     }

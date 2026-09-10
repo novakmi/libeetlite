@@ -1,0 +1,1003 @@
+= EET a knihovna libeetlite
+:toc:
+:toclevels: 3
+:sectnums:
+:source-highlighter: highlight.js
+:icons: font
+
+== Účel dokumentu
+
+Tento dokument popisuje komunikaci se službou elektronické evidence tržeb (EET), kterou vytváří knihovna `libeetlite`. Zaměřuje se na formát SOAP/XML zprávy, výpočet kontrolních kódů, podpis WS-Security, odeslání požadavku a zpracování odpovědi.
+
+Dokument rozlišuje společné části protokolu, pro implementaci označenou jako EET 1.0 a nové rozhraní EET 2.0. Označení EET 1.0 zde označuje původní generaci implementovanou touto knihovnou; nejde o přesné označení poslední interní verze původní specifikace, která byla v3.1.
+
+== Společné části
+
+=== Komunikační scénář
+
+Komunikace má synchronní charakter:
+
+. Pokladní aplikace připraví údaje o tržbě a pokladní certifikát.
+. Klient vytvoří XML datovou zprávu podle verze rozhraní.
+. Klient vytvoří SOAP obálku a zabezpečí ji podle příslušného WS-Security kontraktu.
+. XML se odešle metodou HTTPS POST na endpoint daného prostředí.
+. EET vrátí potvrzovací nebo chybovou XML odpověď.
+. Klient z odpovědi přečte potvrzovací kód, varování a chyby podle verze rozhraní.
+
+Obě generace používají SOAP/XML, WSDL, XSD, HTTPS a elektronické podpisy. Konkrétní endpoint, namespace, položky, kontrolní kódy, odpovědi a certifikáty se však řídí verzí rozhraní a nesmí se mezi verzemi směšovat.
+
+=== Společné technické zásady
+
+* Datová zpráva je XML vložené do `SOAP Body`.
+* Strukturu zprávy určuje WSDL a XML schéma XSD; ruční odhad struktury není náhradou za validaci proti XSD.
+* Komunikace probíhá přes HTTPS. Certifikáty, důvěryhodný řetězec a endpoint musí odpovídat prostředí Playground nebo produkce.
+* Klient musí chránit soukromý klíč a heslo ke keystore. Do SOAP hlavičky se vkládá veřejný certifikát nebo jeho reprezentace podle specifikace.
+* Pro SOAP 1.1 je třeba respektovat HTTP `Content-Type` a `SOAPAction` stanovené WSDL. Při volání z prohlížeče mohou být navíc nutné CORS hlavičky.
+* Odpověď může být potvrzovací, obsahovat varování, nebo být chybová. Chybové kódy a názvy potvrzovacích prvků jsou verzově závislé.
+
+Knihovna `libeetlite` vytváří XML, může je odeslat přes `EetUtil.sendSOAPRequest` a odpověď zpracovává.
+
+== EET 2.0 – současné rozhraní
+
+EET 2.0 je současné rozhraní, na které je knihovna `libeetlite` namigrována. Používá SOAP 1.1, HTTPS, WSDL, XSD a WS-Security podpis SOAP Body. Oproti původnímu rozhraní v3 používá kontrakt v4, nový datový model a potvrzovací kód `POK`.
+
+=== Endpoint a prostředí
+
+Integrační testy používají Playground EET 2.0:
+
+[source,text]
+----
+https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4
+----
+
+Endpoint se předává v konfiguraci jako `url`. Playground, produkce a případná další prostředí musí používat odpovídající URL, certifikát a provozní nastavení. Certifikáty původního rozhraní v3 nejsou automaticky použitelné pro EET 2.0.
+
+Knihovna odesílá požadavek metodou HTTPS POST s hlavičkou `Content-Type: text/xml; charset=utf-8`. HTTP transport zajišťuje `EetUtil.sendSOAPRequest`; vlastní aplikace odpovídá za volbu správného endpointu a bezpečné uložení certifikátu.
+
+=== Použití knihovny
+
+==== Vytvoření, validace a odeslání zprávy
+
+Příklad odpovídá testům `EetliteXmlTest` a `EetXmlV4Test`:
+
+[source,groovy]
+----
+def config = [
+    overeni       : "false",
+    prvni_zaslani : "true",
+    eic_popl      : "CZ00000019",
+    id_jednotky   : "123",
+    id_pokl       : "Q-126-R",
+    porad_cis     : "0/6460/ZQ42",
+    dat_trzby     : EetUtil.nowToIso(),
+    celk_trzba    : "7896.00",
+    cert_pass     : passphrase,
+    url           : "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4"
+]
+
+config.cert_popl = new FileInputStream(certPath)
+def message = EetXml.makeMsg(config)
+config.cert_popl.close()
+
+if (!message.failed) {
+    def validationErrors = EetUtil.validateXml(message.xml.toString(), xsdStream)
+    if (validationErrors.empty) {
+        def responseText = EetUtil.sendSOAPRequest(config.url, message.xml.toString())
+        def result = EetXml.processResponse(responseText)
+    }
+}
+----
+
+`cert_popl` je otevřený vstupní stream PKCS#12 keystore. Po vytvoření zprávy jej vždy zavřete. Heslo ani soukromý klíč se nesmí zapisovat do logu nebo verzovacího systému.
+
+==== Výsledek `EetXml.makeMsg`
+
+Metoda vrací mapu s položkami:
+
+`failed`:: Stav lokálního zpracování. Při současné implementaci se chyby formátu jednotlivých polí logují; rozhodující kontrolu lze provést validací výsledného XML proti XSD.
+`xml`:: SOAP XML zpráva určená k odeslání.
+`warnings`:: Seznam lokálních varování.
+`errors`:: Seznam lokálních chyb.
+
+Zpráva EET 2.0 neobsahuje `<KontrolniKody>`, `pkp` ani `bkp`. Kontrolu integrity a autenticity zajišťuje WS-Security podpis SOAP Body.
+
+==== Výsledek `EetXml.processResponse`
+
+Metoda vrací mapu:
+
+`failed`:: `true`, pokud odpověď obsahuje chybu nebo neobsahuje POK.
+`pok`:: Potvrzovací kód nalezený v atributu `pok` elementu `Potvrzeni`.
+`overeni_ok`:: `true`, pokud ověřovací režim vrátí chybu s kódem `"0"`, která znamená úspěšné ověření.
+`warnings`:: Seznam dvojic `(kód varování, text)` z elementů `Varovani`.
+`errors`:: Seznam dvojic `(kód chyby, text)` z elementů `Chyba`.
+
+Parser vyhledává elementy podle lokálního názvu, takže není závislý na konkrétním XML prefixu. Rozpozná také prefixed názvy atributů. Neprovádí kryptografické ověření podpisu odpovědi; odpověď je považována za úspěšnou podle POK, případně podle pravidla pro ověřovací režim.
+
+=== Konfigurace datové zprávy
+
+Hodnoty se předávají jako položky Groovy mapy. Povinné položky jsou kontrolovány proti XSD při explicitní validaci a jejich základní formát kontroluje `EetXml.dataFields`.
+
+==== Hlavička `Hlavicka`
+
+`dat_odesl`:: Knihovna vytváří aktuální UTC čas ve formátu `yyyy-MM-dd'T'HH:mm:ss'Z'`.
+`overeni`:: Řetězec `"false"` pro běžné odeslání nebo `"true"` pro ověřovací režim.
+`prvni_zaslani`:: Řetězec `"true"` nebo `"false"` podle toho, zda jde o první odeslání tržby.
+`uuid_zpravy`:: Knihovna generuje UUID automaticky.
+
+==== Data `Data`
+
+`eic_popl`:: EIČ poplatníka; implementace kontroluje formát `CZ` a 8 až 10 číslic.
+`eic_poverujiciho`:: EIČ pověřujícího poplatníka, pokud se používá.
+`id_jednotky`:: Identifikátor evidenční jednotky; jedna až devět číslic bez počáteční nuly.
+`id_pokl`:: Identifikátor pokladního zařízení, jeden až 20 ASCII znaků.
+`porad_cis`:: Pořadové číslo tržby, jeden až 25 ASCII znaků.
+`dat_trzby`:: Datum a čas uskutečnění tržby ve formátu požadovaném XSD; testy používají `EetUtil.nowToIso()`.
+`celk_trzba`:: Celková částka tržby s právě dvěma desetinnými místy.
+`povereni_vice_popl`:: Volitelný příznak zastupování více poplatníků.
+`urceno_cerp_zuct`:: Volitelná částka určená k následnému čerpání nebo zúčtování.
+`cerp_zuct`:: Volitelná částka následně čerpaná nebo zúčtovaná.
+
+Původní položky `dic_popl`, `id_provoz`, `rezim`, rozpad DPH (`dan1` až `dan3`, `zakl_dan1` až `zakl_dan3`) a sekce `KontrolniKody` se do zprávy EET 2.0 nepoužívají. To potvrzuje také `info/EET2/EETXMLSchema.xsd`: komplexní typ `TrzbaDataType` obsahuje pouze atributy uvedené výše a žádný z atributů `dan1`, `dan2`, `dan3`, `zakl_dan1`, `zakl_dan2` ani `zakl_dan3`.
+
+=== XML a SOAP struktura
+
+Zjednodušená struktura zprávy vytvořené aktuální implementací:
+
+[source,xml]
+----
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Header xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+    <wsse:Security soap:mustUnderstand="1" ...>
+      <wsse:BinarySecurityToken wsu:Id="TokenId+..." ...>...</wsse:BinarySecurityToken>
+      <ds:Signature Id="SigId+...">
+        <ds:SignedInfo>
+          <ds:CanonicalizationMethod Algorithm="...xml-exc-c14n#">
+            <ec:InclusiveNamespaces PrefixList="soap"/>
+          </ds:CanonicalizationMethod>
+          <ds:SignatureMethod Algorithm="...rsa-sha256"/>
+          <ds:Reference URI="#BodyId+...">
+            <ds:Transforms>
+              <ds:Transform Algorithm="...xml-exc-c14n#"/>
+            </ds:Transforms>
+            <ds:DigestMethod Algorithm="...xmlenc#sha256"/>
+            <ds:DigestValue>...</ds:DigestValue>
+          </ds:Reference>
+        </ds:SignedInfo>
+        <ds:SignatureValue>...</ds:SignatureValue>
+        <ds:KeyInfo>...</ds:KeyInfo>
+      </ds:Signature>
+    </wsse:Security>
+  </SOAP-ENV:Header>
+  <soap:Body wsu:Id="BodyId+...">
+    <Trzba xmlns="http://fs.gov.cz/eet/schema/v4">
+      <Hlavicka dat_odesl="..." overeni="false"
+          prvni_zaslani="true" uuid_zpravy="..."/>
+      <Data eic_popl="CZ00000019" id_jednotky="123"
+          id_pokl="Q-126-R" porad_cis="0/6460/ZQ42"
+          dat_trzby="..." celk_trzba="7896.00"/>
+    </Trzba>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Jmenný prostor datové zprávy je `http://fs.gov.cz/eet/schema/v4`. Prefixy jsou technickou součástí serializace; rozhodující jsou namespace URI, atributy a struktura podle WSDL/XSD. Implementace záměrně nevkládá atribut `xml:id` ani element `KontrolniKody`.
+
+=== WS-Security podpis
+
+Implementace:
+
+. vytvoří SOAP Body s atributem `wsu:Id`,
+. vypočítá SHA-256 digest serializovaného Body,
+. vytvoří `ds:SignedInfo` s exclusive XML canonicalizací a inclusive prefixem `soap`,
+. podepíše kanonikalizovaný `SignedInfo` algoritmem `SHA256withRSA`,
+. vloží certifikát jako `wsse:BinarySecurityToken`,
+. propojí podpis s certifikátem přes `wsse:SecurityTokenReference`.
+
+Certifikát se načítá z PKCS#12 keystore. Soukromý klíč zůstává lokálně a do XML se vkládá pouze veřejný certifikát. Změna jakéhokoli podepsaného údaje, například `celk_trzba`, vede při odeslání k chybě neplatného podpisu.
+
+=== Odpověď služby
+
+Úspěšná odpověď obsahuje `Potvrzeni` s atributem `pok`. Může obsahovat také jedno nebo více varování:
+
+[source,xml]
+----
+<soap:Envelope ...>
+  <soap:Body>
+    <Odpoved xmlns="http://fs.gov.cz/eet/schema/v4">
+      <Hlavicka uuid_zpravy="..." />
+      <Potvrzeni pok="58014b05-1bc5-46d0-8174-46bcf8ef8124-fa"
+          test="true"/>
+      <Varovani kod_varov="5">...</Varovani>
+    </Odpoved>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Chybová odpověď obsahuje `Chyba` s atributem `kod` a textem. Při chybě XML schématu, neplatném podpisu nebo chybějící povinné položce se POK nevrací a `processResponse` nastaví `failed=true`. Ověřovací režim může vrátit `Chyba kod="0"`; knihovna ji převede na `overeni_ok=true` a odpověď považuje za úspěšně ověřenou.
+
+=== Testování EET 2.0
+
+Testovací sada je rozdělena do tří TestNG skupin. Rozdělení umožňuje běžně spouštět rychlé testy bez sítě a integrační testy proti Playgroundu pouze samostatně.
+
+==== Skupina `unit`
+
+Jednotkové testy nevyžadují síť, certifikát ani běžící EET službu. Ověřují izolované funkce a konstrukci zpráv:
+
+* namespace v4 a nové názvy atributů `eic_popl` a `id_jednotky`,
+* nepřítomnost `KontrolniKody`,
+* parsování odpovědi s POK,
+* převod Base64 a hexadecimálních hodnot,
+* XML canonicalizaci,
+* formátování UTC data,
+* vytvoření SOAP/XML struktury.
+
+Skupina `unit` je určena pro rychlou kontrolu základního chování po každé změně.
+
+==== Skupina `local`
+
+Lokální testy také nevolají EET Playground, ale ověřují chování vyžadující lokální zdroje nebo více spolupracujících částí:
+
+* validaci vygenerované zprávy proti `info/EET2/EETXMLSchema.xsd`,
+* kontrolu povinných polí a neplatných dat proti XSD,
+* validaci volitelných částek `cerp_zuct` a `urceno_cerp_zuct`,
+* lokální HTTP transport přes testovací server,
+* ověření lokálního sestavení zprávy s PKCS#12 certifikátem.
+
+Skupiny `unit` a `local` jsou zahrnuty v běžném Gradle tasku:
+
+[source,shell]
+----
+gradle test
+----
+
+==== Skupina `internet`
+
+Internetové testy používají EET 2.0 Playground a vyžadují síťové připojení, platný testovací certifikát, heslo certifikátu a aktuální endpoint. Ověřují celý komunikační scénář:
+
+* úspěšné odeslání a získání POK,
+* varování pro datum tržby a nesoulad EIČ s certifikátem,
+* ověřovací režim,
+* odmítnutí neplatného podpisu,
+* odmítnutí změněného podepsaného Body,
+* chybu XML schématu při chybějící povinné položce nebo neplatném datu,
+* odeslání volitelných finančních položek.
+
+Spouštějí se samostatným taskem:
+
+[source,shell]
+----
+gradle internetTest
+----
+
+Task `internetTest` spouští pouze skupinu `internet`; běžný task `test` ji záměrně nespouští, aby nebyl závislý na dostupnosti služby EET a na platnosti certifikátů.
+
+Konkrétní test lze spustit například:
+
+[source,shell]
+----
+gradle internetTest --tests "com.github.novakmi.libeetlite.test.EetliteXmlTest.getPokTest"
+----
+
+=== Známá omezení implementace EET 2.0
+
+* `EetXml.checkPatterns` některé neplatné hodnoty pouze zaloguje; úplnou kontrolu je nutné provést pomocí `EetUtil.validateXml` proti oficiálnímu XSD.
+* `EetXml.processResponse` neověřuje elektronický podpis odpovědi.
+* HTTP klient nastavuje `Content-Type`, ale neřeší automatické opakování, timeouty ani aplikační retry politiku.
+* Endpoint a certifikát se předávají konfigurací; knihovna sama nerozlišuje Playground a produkci.
+* Heslo ke keystore a soukromý klíč musí zůstat mimo repozitář a logy.
+
+== EET 1.0 – původní implementace knihovny
+
+=== Endpoint a verze rozhraní
+
+Test v projektu používá:
+
+[source,text]
+----
+https://pg.eet.cz:443/eet/services/EETServiceSOAP/v3
+----
+
+Jde o neprodukční Playground původního EET. Testovací certifikát musí odpovídat tomuto prostředí. Produkční URL ani produkční certifikát se nesmí zaměňovat s Playgroundem.
+
+Tato původní implementace používá kontrakt v3 a staré testovací certifikáty. Aktuální rozhraní EET 2.0 je popsáno v následující kapitole; postup přechodu je uveden v samostatné kapitole o migraci.
+
+=== Použití knihovny
+
+==== Vytvoření a odeslání zprávy
+
+Příklad odpovídá testu `EetliteXmlTest`:
+
+[source,groovy]
+----
+def config = [
+    overeni       : "0",       // ostrý mód; pro ověřovací režim "1"
+    prvni_zaslani : "1",
+    dic_popl      : "CZ00000019",
+    id_provoz     : "123",
+    id_pokl       : "Q-126-R",
+    porad_cis     : "0/6460/ZQ42",
+    dat_trzby     : EetUtil.nowToIso(),
+    celk_trzba    : "7896.00",
+    rezim         : "0",
+    cert_pass     : "eet",
+    cert_popl_path: "src/test/testData/cert/EET_CA1_Playground-CZ00000019.p12",
+    url           : "https://pg.eet.cz:443/eet/services/EETServiceSOAP/v3"
+]
+
+config.cert_popl = new FileInputStream(config.cert_popl_path)
+def message = EetXml.makeMsg(config)
+config.cert_popl.close()
+
+if (!message.failed) {
+    def responseText = EetUtil.sendSOAPRequest(config.url, message.xml.toString())
+    def result = EetXml.processResponse(responseText)
+}
+----
+
+`cert_popl` je otevřený vstupní stream PKCS#12 keystore. Po volání `makeMsg` je nutné jej zavřít. Heslo certifikátu se nesmí zapisovat do logu ani do verzovacího systému.
+
+==== Výsledek `EetXml.makeMsg`
+
+Metoda vrací mapu:
+
+`failed`:: `true`, pokud lokální vytvoření zprávy selhalo.
+`xml`:: SOAP XML určené k odeslání; při lokální chybě může být `null`.
+`pkp`:: Podpisový kód poplatníka v Base64.
+`bkp`:: Bezpečnostní kód poplatníka ve formátu s pomlčkami.
+`warnings`:: Seznam varování lokálního zpracování.
+`errors`:: Seznam dvojic `(kód, text)`.
+
+Metoda nevytváří HTTP požadavek a neověřuje dostupnost endpointu.
+
+==== Výsledek `EetXml.processResponse`
+
+Metoda vrací mapu:
+
+`failed`:: `true`, pokud odpověď obsahuje chybu nebo neobsahuje FIK.
+`fik`:: FIK nalezený v atributu odpovědi; při chybě `null`.
+`warnings`:: Seznam dvojic `(kód varování, text)` z elementů `Varovani`.
+`errors`:: Seznam dvojic `(kód chyby, text)` z elementů `Chyba`.
+
+Parser hledá elementy podle lokálního názvu, takže funguje i při použití jiného prefixu XML namespace. Neprovádí však kryptografické ověření podpisu odpovědi.
+
+=== Konfigurace datové zprávy
+
+Hodnoty jsou v implementaci předávány jako položky Groovy mapy. Názvy odpovídají atributům elementu `Data` nebo `Hlavicka`.
+
+==== Hlavička `Hlavicka`
+
+`dat_odesl`:: Datum a čas odeslání. Knihovna jej vytváří jako aktuální UTC čas ve formátu `yyyy-MM-dd'T'HH:mm:ss'Z'`.
+`overeni`:: Řetězec `"0"` pro běžné odeslání nebo `"1"` pro ověřovací mód.
+`prvni_zaslani`:: Řetězec `"0"` nebo `"1"` podle toho, zda jde o první odeslání tržby.
+`uuid_zpravy`:: Knihovna generuje UUID automaticky.
+
+==== Data `Data`
+
+`dic_popl`:: DIČ poplatníka, v projektu kontrolované prefixem `CZ` a 8 až 10 číslicemi.
+`id_provoz`:: Identifikátor provozovny.
+`id_pokl`:: Identifikátor pokladního zařízení.
+`porad_cis`:: Pořadové číslo účtenky nebo tržby.
+`dat_trzby`:: Datum a čas tržby; test používá lokální časovou zónu `Europe/Prague`.
+`celk_trzba`:: Celková částka tržby ve formátu s právě dvěma desetinnými místy.
+`rezim`:: `"0"` pro běžný režim nebo `"1"` pro zjednodušený režim.
+`dic_poverujiciho`:: DIČ pověřujícího poplatníka, pokud se používá.
+`dan1`, `dan2`, `dan3`:: Částky daně podle sazby.
+`zakl_dan1`, `zakl_dan2`, `zakl_dan3`:: Základy daně podle sazby.
+`zakl_nepodl_dph`:: Základ daně nepodléhající DPH.
+`cerp_zuct`, `cest_sluz`, `pouzit_zboz1`, `pouzit_zboz2`, `pouzit_zboz3`, `urceno_cerp_zuct`:: Volitelné částky podle typu tržby.
+
+Implementace obsahuje kontrolní regulární výrazy, ale některé chyby pouze zaloguje a nezastaví tvorbu zprávy. Před odesláním proto doporučujeme validovat vstup proti oficiálnímu XSD.
+
+=== XML a SOAP struktura
+
+Zjednodušená struktura zprávy vytvořené knihovnou:
+
+[source,xml]
+----
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Header xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+    <wsse:Security soap:mustUnderstand="1" ...>
+      <wsse:BinarySecurityToken wsu:Id="TokenId+..."
+          EncodingType="...#Base64Binary"
+          ValueType="...#X509v3">...</wsse:BinarySecurityToken>
+      <ds:Signature Id="SigId+...">
+        <ds:SignedInfo>
+          <ds:CanonicalizationMethod Algorithm="...xml-exc-c14n#"/>
+          <ds:SignatureMethod Algorithm="...rsa-sha256"/>
+          <ds:Reference URI="#BodyId+...">
+            <ds:Transforms>
+              <ds:Transform Algorithm="...xml-exc-c14n#"/>
+            </ds:Transforms>
+            <ds:DigestMethod Algorithm="...xmlenc#sha256"/>
+            <ds:DigestValue>...</ds:DigestValue>
+          </ds:Reference>
+        </ds:SignedInfo>
+        <ds:SignatureValue>...</ds:SignatureValue>
+        <ds:KeyInfo>...</ds:KeyInfo>
+      </ds:Signature>
+    </wsse:Security>
+  </SOAP-ENV:Header>
+  <soap:Body wsu:Id="BodyId+..." xml:id="BodyId+...">
+    <Trzba xmlns="http://fs.mfcr.cz/eet/schema/v3">
+      <Hlavicka dat_odesl="..." overeni="0"
+          prvni_zaslani="1" uuid_zpravy="..."/>
+      <Data dic_popl="CZ00000019" id_provoz="123"
+          id_pokl="Q-126-R" porad_cis="0/6460/ZQ42"
+          dat_trzby="..." celk_trzba="7896.00" rezim="0"/>
+      <KontrolniKody>
+        <pkp cipher="RSA2048" digest="SHA256" encoding="base64">...</pkp>
+        <bkp digest="SHA1" encoding="base16">...</bkp>
+      </KontrolniKody>
+    </Trzba>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Prefixy (`soap`, `SOAP-ENV`, `wsse`, `wsu`, `ds`) jsou technické XML prefixy. Rozhodující jsou jmenné prostory a atributy, nikoli konkrétní názvy prefixů.
+
+=== Kryptografické hodnoty
+
+==== PKP
+
+Knihovna sestavuje řetězec `PKPPlain` v tomto pořadí:
+
+[source,text]
+----
+dic_popl|id_provoz|id_pokl|porad_cis|dat_trzby|celk_trzba
+----
+
+Řetězec se zakóduje UTF-8 a podepíše soukromým klíčem z certifikátu algoritmem `SHA256withRSA`. Výsledek je vložen do XML jako Base64 v elementu `pkp`.
+
+==== BKP
+
+BKP se vypočítá jako SHA-1 hash binární hodnoty PKP, nikoli z Base64 textu PKP. Výsledek se převádí na velká hexadecimální písmena a formátuje do pěti skupin oddělených pomlčkou:
+
+[source,text]
+----
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+----
+
+==== WS-Security podpis
+
+Podpis se vztahuje k SOAP Body. Knihovna:
+
+. vytvoří SHA-256 digest serializovaného těla,
+. vloží digest do `ds:SignedInfo`,
+. používá exclusive XML canonicalizaci,
+. podepíše `SignedInfo` algoritmem RSA-SHA256,
+. přidá certifikát jako `wsse:BinarySecurityToken`,
+. propojí podpis s certifikátem přes `wsse:SecurityTokenReference`.
+
+Soukromý klíč nikdy nevkládejte do XML ani do logu. Do SOAP hlavičky patří pouze veřejný certifikát; podpis je vytvořen soukromým klíčem lokálně.
+
+=== Odpověď služby
+
+Úspěšná odpověď obsahuje potvrzení a FIK. Playground může vracet testovací hodnoty a varování. Chybová odpověď obsahuje element `Chyba` s kódem a textem.
+
+Typický model odpovědi původního rozhraní:
+
+[source,xml]
+----
+<soap:Envelope ...>
+  <soap:Body>
+    <Odpoved xmlns="http://fs.mfcr.cz/eet/schema/v3">
+      <Hlavicka uuid_zpravy="..." />
+      <Potvrzeni fik="..." />
+      <Varovani kod_varov="...">...</Varovani>
+    </Odpoved>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Knihovna hledá:
+
+* `Varovani` a ukládá atribut `kod_varov` a text,
+* `Chyba` a ukládá atribut `kod` a text; současně nastaví `failed=true`,
+* libovolný element s atributem `fik` a jeho hodnotu uloží do `fik`.
+
+Pokud není FIK nalezen, nastaví `processResponse` `failed=true`, i když odpověď neobsahuje explicitní element `Chyba`.
+
+=== Testování
+
+Výchozí Gradle task `test` spouští skupiny `unit` a `local`:
+
+[source,groovy]
+----
+groups {
+    run {
+        include(name: "unit")
+        include(name: "local")
+    }
+}
+----
+
+Internetové testy jsou označené skupinou `internet` a spouštějí se samostatným taskem:
+
+[source,shell]
+----
+gradle internetTest
+----
+
+Internetové testy nejsou čisté unit testy. Závisí na:
+
+* dostupnosti endpointu přes DNS, HTTPS a TLS,
+* platnosti testovacího certifikátu a hesla,
+* dostupnosti služby Playground,
+* kompatibilitě starého endpointu v3,
+* přesném obsahu odpovědi, například počtu varování a délce FIK.
+
+Při chybě nejprve zkontrolujte skutečný endpoint, certifikát, odpověď služby a příčinu v `--stacktrace` nebo v XML reportu Gradle. Selhání těchto testů nemusí znamenat chybu ve výpočtu XML zprávy.
+
+=== Známá omezení implementace
+
+* Projekt nemá Gradle Wrapper; verze Gradle se bere z lokální instalace.
+* Při použití JDK 25 je nutný Gradle 9.1 nebo novější. Pro kompilaci projektu je nastavena kompatibilita Java 21.
+* `EetXml.checkPatterns` některé neplatné hodnoty pouze zaloguje; nevrací obecnou validační chybu.
+* `EetXml.processResponse` neověřuje elektronický podpis odpovědi.
+* Knihovna používá namespace a datový model původního EET v3. Aktuální EET 2.0 v4 nelze používat pouze změnou URL.
+* Testovací certifikáty a hesla patří pouze do testovacího prostředí. Nepoužívejte je v produkci.
+
+////
+Duplicitní původní umístění kapitoly EET 2.0. Aktuální kapitola je uvedena před EET 1.0.
+== EET 2.0 – současné rozhraní
+
+EET 2.0 je současné rozhraní, na které je knihovna `libeetlite` namigrována. Používá SOAP 1.1, HTTPS, WSDL, XSD a WS-Security podpis SOAP Body. Oproti původnímu rozhraní v3 používá kontrakt v4, nový datový model a potvrzovací kód `POK`.
+
+=== Endpoint a prostředí
+
+Integrační testy používají Playground EET 2.0:
+
+[source,text]
+----
+https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4
+----
+
+Endpoint se předává v konfiguraci jako `url`. Playground, produkce a případná další prostředí musí používat odpovídající URL, certifikát a provozní nastavení. Certifikáty původního rozhraní v3 nejsou automaticky použitelné pro EET 2.0.
+
+Knihovna odesílá požadavek metodou HTTPS POST s hlavičkou `Content-Type: text/xml; charset=utf-8`. HTTP transport zajišťuje `EetUtil.sendSOAPRequest`; vlastní aplikace odpovídá za volbu správného endpointu a bezpečné uložení certifikátu.
+
+=== Použití knihovny
+
+==== Vytvoření, validace a odeslání zprávy
+
+Příklad odpovídá testům `EetliteXmlTest` a `EetXmlV4Test`:
+
+[source,groovy]
+----
+def config = [
+    overeni       : "false",
+    prvni_zaslani : "true",
+    eic_popl      : "CZ00000019",
+    id_jednotky   : "123",
+    id_pokl       : "Q-126-R",
+    porad_cis     : "0/6460/ZQ42",
+    dat_trzby     : EetUtil.nowToIso(),
+    celk_trzba    : "7896.00",
+    cert_pass     : passphrase,
+    url           : "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4"
+]
+
+config.cert_popl = new FileInputStream(certPath)
+def message = EetXml.makeMsg(config)
+config.cert_popl.close()
+
+if (!message.failed) {
+    def validationErrors = EetUtil.validateXml(message.xml.toString(), xsdStream)
+    if (validationErrors.empty) {
+        def responseText = EetUtil.sendSOAPRequest(config.url, message.xml.toString())
+        def result = EetXml.processResponse(responseText)
+    }
+}
+----
+
+`cert_popl` je otevřený vstupní stream PKCS#12 keystore. Po vytvoření zprávy jej vždy zavřete. Heslo ani soukromý klíč se nesmí zapisovat do logu nebo verzovacího systému.
+
+==== Výsledek `EetXml.makeMsg`
+
+Metoda vrací mapu s položkami:
+
+`failed`:: Stav lokálního zpracování. Při současné implementaci se chyby formátu jednotlivých polí logují; rozhodující kontrolu lze provést validací výsledného XML proti XSD.
+`xml`:: SOAP XML zpráva určená k odeslání.
+`warnings`:: Seznam lokálních varování.
+`errors`:: Seznam lokálních chyb.
+
+Zpráva EET 2.0 neobsahuje `<KontrolniKody>`, `pkp` ani `bkp`. Kontrolu integrity a autenticity zajišťuje WS-Security podpis SOAP Body.
+
+==== Výsledek `EetXml.processResponse`
+
+Metoda vrací mapu:
+
+`failed`:: `true`, pokud odpověď obsahuje chybu nebo neobsahuje POK.
+`pok`:: Potvrzovací kód nalezený v atributu `pok` elementu `Potvrzeni`.
+`overeni_ok`:: `true`, pokud ověřovací režim vrátí chybu s kódem `"0"`, která znamená úspěšné ověření.
+`warnings`:: Seznam dvojic `(kód varování, text)` z elementů `Varovani`.
+`errors`:: Seznam dvojic `(kód chyby, text)` z elementů `Chyba`.
+
+Parser vyhledává elementy podle lokálního názvu, takže není závislý na konkrétním XML prefixu. Rozpozná také prefixed názvy atributů. Neprovádí kryptografické ověření podpisu odpovědi; odpověď je považována za úspěšnou podle POK, případně podle pravidla pro ověřovací režim.
+
+=== Konfigurace datové zprávy
+
+Hodnoty se předávají jako položky Groovy mapy. Povinné položky jsou kontrolovány proti XSD při explicitní validaci a jejich základní formát kontroluje `EetXml.dataFields`.
+
+==== Hlavička `Hlavicka`
+
+`dat_odesl`:: Knihovna vytváří aktuální UTC čas ve formátu `yyyy-MM-dd'T'HH:mm:ss'Z'`.
+`overeni`:: Řetězec `"false"` pro běžné odeslání nebo `"true"` pro ověřovací režim.
+`prvni_zaslani`:: Řetězec `"true"` nebo `"false"` podle toho, zda jde o první odeslání tržby.
+`uuid_zpravy`:: Knihovna generuje UUID automaticky.
+
+==== Data `Data`
+
+`eic_popl`:: EIČ poplatníka; implementace kontroluje formát `CZ` a 8 až 10 číslic.
+`eic_poverujiciho`:: EIČ pověřujícího poplatníka, pokud se používá.
+`id_jednotky`:: Identifikátor evidenční jednotky; jedna až devět číslic bez počáteční nuly.
+`id_pokl`:: Identifikátor pokladního zařízení, jeden až 20 ASCII znaků.
+`porad_cis`:: Pořadové číslo tržby, jeden až 25 ASCII znaků.
+`dat_trzby`:: Datum a čas uskutečnění tržby ve formátu požadovaném XSD; testy používají `EetUtil.nowToIso()`.
+`celk_trzba`:: Celková částka tržby s právě dvěma desetinnými místy.
+`povereni_vice_popl`:: Volitelný příznak zastupování více poplatníků.
+`urceno_cerp_zuct`:: Volitelná částka určená k následnému čerpání nebo zúčtování.
+`cerp_zuct`:: Volitelná částka následně čerpaná nebo zúčtovaná.
+
+Původní položky `dic_popl`, `id_provoz`, `rezim`, rozpad DPH (`dan1` až `dan3`, `zakl_dan1` až `zakl_dan3`) a sekce `KontrolniKody` se do zprávy EET 2.0 nepoužívají.
+
+=== XML a SOAP struktura
+
+Zjednodušená struktura zprávy vytvořené aktuální implementací:
+
+[source,xml]
+----
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Header xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+    <wsse:Security soap:mustUnderstand="1" ...>
+      <wsse:BinarySecurityToken wsu:Id="TokenId+..." ...>...</wsse:BinarySecurityToken>
+      <ds:Signature Id="SigId+...">
+        <ds:SignedInfo>
+          <ds:CanonicalizationMethod Algorithm="...xml-exc-c14n#">
+            <ec:InclusiveNamespaces PrefixList="soap"/>
+          </ds:CanonicalizationMethod>
+          <ds:SignatureMethod Algorithm="...rsa-sha256"/>
+          <ds:Reference URI="#BodyId+...">
+            <ds:Transforms>
+              <ds:Transform Algorithm="...xml-exc-c14n#"/>
+            </ds:Transforms>
+            <ds:DigestMethod Algorithm="...xmlenc#sha256"/>
+            <ds:DigestValue>...</ds:DigestValue>
+          </ds:Reference>
+        </ds:SignedInfo>
+        <ds:SignatureValue>...</ds:SignatureValue>
+        <ds:KeyInfo>...</ds:KeyInfo>
+      </ds:Signature>
+    </wsse:Security>
+  </SOAP-ENV:Header>
+  <soap:Body wsu:Id="BodyId+...">
+    <Trzba xmlns="http://fs.gov.cz/eet/schema/v4">
+      <Hlavicka dat_odesl="..." overeni="false"
+          prvni_zaslani="true" uuid_zpravy="..."/>
+      <Data eic_popl="CZ00000019" id_jednotky="123"
+          id_pokl="Q-126-R" porad_cis="0/6460/ZQ42"
+          dat_trzby="..." celk_trzba="7896.00"/>
+    </Trzba>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Jmenný prostor datové zprávy je `http://fs.gov.cz/eet/schema/v4`. Prefixy jsou technickou součástí serializace; rozhodující jsou namespace URI, atributy a struktura podle WSDL/XSD. Implementace záměrně nevkládá atribut `xml:id` ani element `KontrolniKody`.
+
+=== WS-Security podpis
+
+Implementace:
+
+. vytvoří SOAP Body s atributem `wsu:Id`,
+. vypočítá SHA-256 digest serializovaného Body,
+. vytvoří `ds:SignedInfo` s exclusive XML canonicalizací a inclusive prefixem `soap`,
+. podepíše kanonikalizovaný `SignedInfo` algoritmem `SHA256withRSA`,
+. vloží certifikát jako `wsse:BinarySecurityToken`,
+. propojí podpis s certifikátem přes `wsse:SecurityTokenReference`.
+
+Certifikát se načítá z PKCS#12 keystore. Soukromý klíč zůstává lokálně a do XML se vkládá pouze veřejný certifikát. Změna jakéhokoli podepsaného údaje, například `celk_trzba`, vede při odeslání k chybě neplatného podpisu.
+
+=== Odpověď služby
+
+Úspěšná odpověď obsahuje `Potvrzeni` s atributem `pok`. Může obsahovat také jedno nebo více varování:
+
+[source,xml]
+----
+<soap:Envelope ...>
+  <soap:Body>
+    <Odpoved xmlns="http://fs.gov.cz/eet/schema/v4">
+      <Hlavicka uuid_zpravy="..." />
+      <Potvrzeni pok="58014b05-1bc5-46d0-8174-46bcf8ef8124-fa"
+          test="true"/>
+      <Varovani kod_varov="5">...</Varovani>
+    </Odpoved>
+  </soap:Body>
+</soap:Envelope>
+----
+
+Chybová odpověď obsahuje `Chyba` s atributem `kod` a textem. Při chybě XML schématu, neplatném podpisu nebo chybějící povinné položce se POK nevrací a `processResponse` nastaví `failed=true`. Ověřovací režim může vrátit `Chyba kod="0"`; knihovna ji převede na `overeni_ok=true` a odpověď považuje za úspěšně ověřenou.
+
+=== Testování EET 2.0
+
+Lokální testy ověřují mimo jiné:
+
+* namespace v4 a nové názvy atributů `eic_popl` a `id_jednotky`,
+* nepřítomnost `KontrolniKody`,
+* parsování POK, varování a chyb,
+* validaci zprávy proti XSD,
+* chování při chybějící povinné položce nebo neplatném datu.
+
+Internetové testy jsou označeny skupinou `internet` a používají EET 2.0 Playground:
+
+[source,shell]
+----
+gradle internetTest
+----
+
+Testují úspěšné odeslání, varování, ověřovací režim, neplatný podpis po změně `SignatureValue`, změnu podepsaného Body, chybu schématu a volitelné finanční položky. Vyžadují aktuální Playground certifikát, heslo a dostupnost endpointu.
+
+=== Známá omezení implementace EET 2.0
+
+* `EetXml.checkPatterns` některé neplatné hodnoty pouze zaloguje; úplnou kontrolu je nutné provést pomocí `EetUtil.validateXml` proti oficiálnímu XSD.
+* `EetXml.processResponse` neověřuje elektronický podpis odpovědi.
+* HTTP klient nastavuje `Content-Type`, ale neřeší automatické opakování, timeouty ani aplikační retry politiku.
+* Endpoint a certifikát se předávají konfigurací; knihovna sama nerozlišuje Playground a produkci.
+* Heslo ke keystore a soukromý klíč musí zůstat mimo repozitář a logy.
+////
+
+== Migrace z EET 1.0 na EET 2.0
+
+Tato kapitola zachycuje provedenou migraci knihovny `libeetlite` z původního rozhraní EET v3.1 na současné rozhraní EET 2.0 v4.1. Migrace nebyla pouze změnou endpointu: upraven byl datový model, SOAP namespace, zpracování odpovědi, testovací konfigurace i certifikáty.
+
+=== Úpravy produkčního kódu
+
+==== Soubor `EetUtil.groovy`
+
+===== Odstraněné funkce
+
+V EET 2.0 se podpisový kód poplatníka PKP již nepočítá z datové věty a bezpečnostní kód poplatníka BKP se v požadavku neodesílá. Z původní implementace proto byly odstraněny metody `makePkp` a `makeBkp`.
+
+Odstraněna byla také pomocná metoda `isZjednodusenyRezim`, protože nové rozhraní zjednodušený režim nepodporuje.
+
+===== Zachované kryptografické funkce
+
+Funkce pro WS-Security podpis zůstaly zachovány:
+
+* `makeSignatureValue` podepisuje kanonikalizovaný `SignedInfo` algoritmem RSA-SHA256,
+* `makeDigestValue` vytváří SHA-256 digest podepisovaného SOAP Body,
+* `makeSecToken` vkládá veřejný certifikát jako `BinarySecurityToken`.
+
+==== Soubor `EetXml.groovy`
+
+===== Datový model `dataFields`
+
+Mapa `dataFields` byla převedena na položky EET 2.0:
+
+[source,groovy]
+----
+static eicPattern = /^CZ[0-9]{8,10}$/
+static finPattern = /^((0|-?[1-9]\d{0,7})\.\d\d|-0\.(0[1-9]|[1-9]\d))$/
+static idPrefixPattern = /^[0-9a-zA-Z\.,:;\/#\-_ ]/
+
+static dataFields = [
+    "celk_trzba"        : [opt: 1, pattern: finPattern],
+    "cerp_zuct"         : [opt: 0, pattern: finPattern],
+    "dat_trzby"         : [opt: 1],
+    "eic_popl"          : [opt: 1, pattern: eicPattern],
+    "eic_poverujiciho"  : [opt: 0, pattern: eicPattern],
+    "id_jednotky"       : [opt: 1, pattern: /^[1-9][0-9]{0,8}$/],
+    "id_pokl"           : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,20}$/],
+    "porad_cis"         : [opt: 1, pattern: /^[0-9a-zA-Z\.,:;\/#\-_ ]{1,25}$/],
+    "povereni_vice_popl": [opt: 0],
+    "urceno_cerp_zuct"  : [opt: 0, pattern: finPattern]
+]
+----
+
+Staré položky `dic_popl`, `id_provoz`, `rezim`, `dan1` až `dan3` a `zakl_dan1` až `zakl_dan3` již nejsou součástí mapy.
+
+===== Úprava `makeBody`
+
+Metoda `makeBody` nyní vytváří v4 namespace a neobsahuje sekci `<KontrolniKody>`:
+
+[source,groovy]
+----
+static makeBody(config, id, date) {
+    // ... konstrukce dataMap ...
+    def retVal = {
+        "soap:Body"("xmlns:soap": "http://schemas.xmlsoap.org/soap/envelope/",
+                    "xmlns:wsu": "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd",
+                    "wsu:Id": "${id}") {
+            Trzba(xmlns: "http://fs.gov.cz/eet/schema/v4") {
+                Hlavicka(dat_odesl: date, overeni: config.overeni,
+                    prvni_zaslani: config.prvni_zaslani, uuid_zpravy: uuid)
+                Data(dataMap)
+            }
+        }
+    }
+    return retVal
+}
+----
+
+V aktuální implementaci je záměrně odstraněn také atribut `xml:id`, který byl v předchozím návrhu v migraci uveden, ale do výsledné zprávy nepatří.
+
+===== Úprava `makeMsg`
+
+`makeMsg` již nevolá výpočty PKP/BKP a jeho výsledek neobsahuje položky `pkp` ani `bkp`. Zpráva obsahuje pouze SOAP XML s datovou částí a WS-Security podpisem.
+
+==== Úprava `processResponse`
+
+Parser odpovědi byl změněn z hledání atributu `fik` na atribut `pok` elementu `Potvrzeni`:
+
+[source,groovy]
+----
+static processResponse(responseXml) {
+    def retVal = [:]
+    retVal.pok = null
+    retVal.failed = false
+    retVal.overeni_ok = false
+    retVal.warnings = []
+    retVal.errors = []
+
+    // ... načtení a zpracování SOAP XML ...
+    def potvrzeni = envelope.'**'.find { node ->
+        extractLocalName(node.name()) == "Potvrzeni"
+    }
+    retVal.pok = potvrzeni?.attributes()?.find { key, value ->
+        extractLocalName(key) == "pok"
+    }?.value?.toString()
+
+    if (retVal.pok == null && retVal.errors.isEmpty()) {
+        retVal.failed = true
+    }
+    return retVal
+}
+----
+
+Skutečná implementace navíc:
+
+* rozpoznává XML elementy a atributy podle lokálního názvu bez závislosti na prefixu,
+* načítá `Varovani` a `Chyba` do seznamů dvojic kód/text,
+* zpracovává odpověď s chybou `kod="0"` jako úspěšné ověření přes `overeni_ok`,
+* odmítá HTML odpověď místo SOAP XML.
+
+=== Migrace testovací sady
+
+==== Soubor `EetliteXmlTest.groovy`
+
+Testovací konfigurace byla převedena na nové názvy polí, nový certifikát a v4 endpoint:
+
+[source,groovy]
+----
+private getTestConfig() {
+    def trzba_var = [
+        porad_cis : "0/6460/ZQ42",
+        dat_trzby : EetUtil.nowToIso(),
+        celk_trzba: "7896.00"
+    ]
+
+    def trzba_fix = [
+        eic_popl   : "CZ00000019",
+        id_jednotky: "123",
+        id_pokl    : "Q-126-R"
+    ]
+
+    def hlavicka = [
+        overeni      : "false",
+        prvni_zaslani: "true"
+    ]
+
+    def config_fix = [
+        cert_popl_path: ".../cert/CA_EET-Playground-CZ00000019.p12",
+        cert_pass     : "...heslo z lokálního souboru...",
+        url           : "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4"
+    ]
+
+    return hlavicka + trzba_var + trzba_fix + config_fix
+}
+----
+
+Heslo certifikátu se načítá z lokálního souboru a není součástí zdrojového kódu. Test používá `overeni` a `prvni_zaslani` jako řetězce `"false"` a `"true"`, které odpovídají schématu EET 2.0.
+
+==== Úpravy integračních testů
+
+Test úspěšného odeslání byl přejmenován z kontroly FIK na `getPokTest` a kontroluje přítomnost POK:
+
+[source,groovy]
+----
+@Test(groups = ["internet"])
+public void getPokTest() {
+    def config = getTestConfig()
+    def (message, processed) = process(config)
+
+    Assert.assertFalse(message.failed)
+    Assert.assertEquals(processed.warnings.size(), 0)
+    Assert.assertEquals(processed.errors.size(), 0)
+    Assert.assertEquals(processed.pok?.size(), 39)
+    Assert.assertFalse(processed.failed)
+}
+----
+
+Test varování používá `eic_popl` a ověřuje varování pro datum tržby v minulosti i pro EIČ, které neodpovídá certifikátu:
+
+[source,groovy]
+----
+config.dat_trzby = "2016-07-14T18:45:15+02:00"
+def (message, processed) = process(config)
+Assert.assertEquals(processed.warnings.size(), 1)
+
+config.eic_popl = "CZ1212121218"
+(message, processed) = process(config)
+Assert.assertEquals(processed.warnings.size(), 2)
+----
+
+Současná testovací sada dále ověřuje:
+
+* ověřovací režim,
+* neplatné datum lokálně proti XSD i vzdáleně proti službě,
+* neplatný podpis změnou `SignatureValue`,
+* změnu podepsaného Body,
+* chybějící povinnou položku,
+* volitelné částky `cerp_zuct` a `urceno_cerp_zuct`,
+* validaci výsledného XML proti `EETXMLSchema.xsd`.
+
+=== Přehled změn v datovém modelu
+
+[cols="2,2,3", options="header"]
+|===
+| Původní EET 1.0 (v3.1) | EET 2.0 (v4.1) | Změna
+
+| `dic_popl`
+| `eic_popl`
+| Převod názvu identifikátoru poplatníka.
+
+| `id_provoz`
+| `id_jednotky`
+| Převod identifikátoru provozovny na identifikátor evidenční jednotky.
+
+| `fik`
+| `pok`
+| Nový potvrzovací kód v odpovědi služby.
+
+| `<KontrolniKody>` (`pkp`, `bkp`)
+| *(odstraněno)*
+| PKP a BKP se již nevytvářejí ani neodesílají.
+
+| `rezim`
+| *(odstraněno)*
+| Zjednodušený režim není v novém rozhraní podporován.
+
+| `zakl_dan1`–`3`, `dan1`–`3`
+| *(odstraněno)*
+| Rozpad DPH se v novém datovém modelu neeviduje.
+
+| `http://fs.mfcr.cz/eet/schema/v3`
+| `http://fs.gov.cz/eet/schema/v4`
+| Změna XML namespace a kontraktu.
+|===
+
+=== Stav po migraci
+
+Migrace je dokončena a aktuální zdrojový kód používá EET 2.0. Při integraci aplikace je nutné používat pouze nové názvy polí, v4 endpoint, nový certifikát a výsledek `pok`. Starý endpoint v3, položky `dic_popl`/`id_provoz` a výsledek `fik` nejsou s aktuální implementací zaměnitelné.
+
+Před vydáním nebo nasazením ověřte:
+
+* [ ] používá se v4 endpoint a odpovídající EET 2.0 certifikát,
+* [ ] konfigurace používá `eic_popl` a `id_jednotky`,
+* [ ] XML je validováno proti aktuálnímu XSD,
+* [ ] podpis SOAP Body prochází validací proti službě,
+* [ ] parser pracuje s `POK`, `Varovani` a `Chyba`,
+* [ ] produkční certifikát a heslo nejsou součástí repozitáře ani logu.
+
+== Oficiální zdroje
+
+* https://eet.gov.cz/cs/pro-vyvojare/dokumenty-ke-stazeni[Dokumenty EET pro vývojáře] – WSDL, XSD, provozní informace a certifikáty.
+* https://eet.gov.cz/assets/cs/cmsmedia/pro-vyvojare/EET_popis_rozhrani_v1.2.pdf[EET 2.0 – Popis datového rozhraní] – aktuální popis SOAP 1.1, WS-Security a rozhraní v4.
+* https://www.w3.org/TR/soap/[SOAP 1.1].
+* https://www.oasis-open.org/standards/#wssv1.1[OASIS WS-Security 1.1].
+
+== Související soubory v projektu
+
+`src/main/groovy/com/github/novakmi/libeetlite/EetXml.groovy`:: Konstrukce SOAP/XML zprávy a parsování odpovědi.
+`src/main/groovy/com/github/novakmi/libeetlite/EetUtil.groovy`:: WS-Security podpis, certifikát, HTTP transport, validace XML a pomocné datumové funkce.
+`src/test/groovy/com/github/novakmi/libeetlite/test/EetliteXmlTest.groovy`:: Ukázka odeslání zprávy na Playground.
+`build.gradle`:: Závislosti a konfigurace TestNG skupin.

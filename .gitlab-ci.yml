@@ -1,34 +1,79 @@
-# This is the Gradle build system for JVM applications
-# https://gradle.org/
-# https://github.com/gradle/gradle
-image: gradle:6.2.1-jdk11
+image: gradle:9.6.1-jdk21
 
-# Disable the Gradle daemon for Continuous Integration servers as correctness
-# is usually a priority over speed in CI environments. Using a fresh
-# runtime for each build is more reliable since the runtime is completely
-# isolated from any previous builds.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
 
 before_script:
-  - export GRADLE_USER_HOME=`pwd`/.gradle
+  - java -version
+  - gradle --version
 
 build:
   stage: build
-  script: ls -l; gradle -g /cache/.gradle clean assemble
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  script:
+    - gradle clean assemble
   cache:
-    key: "$CI_COMMIT_REF_NAME"
+    key: "$CI_COMMIT_REF_SLUG"
     policy: push
     paths:
-      - build
-      - .gradle
+      - .gradle/caches
+      - .gradle/wrapper
 
 test:
   stage: test
-  script: ls -l; gradle -g /cache./gradle check
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  script:
+    - gradle clean check
   cache:
-    key: "$CI_COMMIT_REF_NAME"
+    key: "$CI_COMMIT_REF_SLUG"
     policy: pull
     paths:
-      - build
-      - .gradle
+      - .gradle/caches
+      - .gradle/wrapper
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - build/test-results/test/*.xml
+    paths:
+      - build/reports/tests/test/
+
+internet-test:
+  stage: test
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: on_success
+  script:
+    - gradle internetTest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    policy: pull
+    paths:
+      - .gradle/caches
+      - .gradle/wrapper
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - build/test-results/internetTest/*.xml
+    paths:
+      - build/reports/tests/internetTest/

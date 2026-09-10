@@ -1,0 +1,412 @@
+= EET rozhrani
+:toc:
+:toclevels: 3
+:sectnums:
+:source-highlighter: highlight.js
+:icons: font
+
+== Datové rozhraní EET 2.0 (v1.0)
+
+=== Vstupní zpráva (Element `<Trzba>`)
+
+Jmenný prostor: `http://fs.gov.cz/eet/schema/v1/eet.xsd`
+
+.Struktura vstupní zprávy `<Trzba>`
+[cols="2,1,1,3,2", options="header"]
+|===
+| Element / Atribut | Typ | Povinnost | Poznámka / Omezení | Příklad
+
+5+| *Sekce `<Hlavicka>`*
+
+| `uuid_zpravy`
+| String (UUID)
+| Povinný
+| Unikátní identifikátor zprávy (doporučena v4, 36 znaků).
+| `b6d214a1-02b4-4e20-8e11-82d123456789`
+
+| `dat_odesl`
+| DateTime
+| Povinný
+| Datum a čas odeslání zprávy (ISO 8601 s časovou zónou).
+| `2026-09-12T10:00:00+02:00`
+
+| `prvni_zaslani`
+| Boolean
+| Povinný
+| Příznak prvního odeslání (`true`) vs. opakovací pokus (`false`).
+| `true`
+
+| `overeni`
+| Boolean
+| Volitelný
+| Ověřovací režim (`true` = pouze validace bez zápisu).
+| `false`
+
+5+| *Sekce `<Data>`*
+
+| `eic_popl`
+| String
+| Povinný
+| EIČ poplatníka (přísná maska `CZ` + 8 až 10 číslic).
+| `CZ00000019`
+
+| `id_jednotky`
+| String
+| Povinný
+| Označení evidenční jednotky z portálu MOJE Daně (1 až 9 cifer).
+| `21`
+
+| `id_pokl`
+| String
+| Povinný
+| Označení pokladního zařízení (1–20 alfanumerických znaků ASCII).
+| `POK-01`
+
+| `porad_cis`
+| String
+| Povinný
+| Pořadové číslo tržby/účtenky (1–25 znaků ASCII bez diakritiky).
+| `2026-0001`
+
+| `dat_trzby`
+| DateTime
+| Povinný
+| Datum a čas uskutečnění tržby (ISO 8601 s časovou zónou).
+| `2026-09-12T09:59:45+02:00`
+
+| `celk_trzba`
+| Decimal
+| Povinný
+| Celková částka v CZK (až 2 desetinná místa).
+| `1550.00`
+
+| `eic_poverujiciho`
+| String
+| Volitelný
+| EIČ zastupovaného poplatníka.
+| `CZ1234567890`
+
+| `povereni_vice_popl`
+| Boolean
+| Volitelný
+| Příznak pověření zastupování více poplatníků.
+| `true`
+
+| `urceno_cerp_zuct`
+| Decimal
+| Volitelný
+| Částka určená k následnému čerpání nebo zúčtování.
+| `500.00`
+
+| `cerp_zuct`
+| Decimal
+| Volitelný
+| Částka následně čerpaná nebo zúčtovaná.
+| `200.00`
+|===
+
+=== Výstupní zpráva (Element `<Odpoved>`)
+
+Jmenný prostor: `http://fs.gov.cz/eet/schema/v1/eet.xsd`
+
+.Struktura výstupní zprávy `<Odpoved>`
+[cols="2,1,1,3,2", options="header"]
+|===
+| Element / Atribut | Typ | Povinnost | Poznámka / Omezení | Příklad
+
+5+| *Sekce `<Hlavicka>`*
+
+| `uuid_zpravy`
+| String (UUID)
+| Volitelný
+| Unikátní identifikátor odpovídající původnímu požadavku.
+| `b6d214a1-02b4-4e20-8e11-82d123456789`
+
+| `dat_prij`
+| DateTime
+| Volitelný
+| Datum a čas přijetí a zpracování zprávy na serveru.
+| `2026-09-12T10:00:01+02:00`
+
+| `dat_odmit`
+| DateTime
+| Volitelný
+| Datum a čas odmítnutí zprávy v případě chyby.
+| `2026-09-12T10:00:01+02:00`
+
+5+| *Sekce `<Potvrzeni>` (Vrací se pouze při úspěšném zpracování)*
+
+| `pok`
+| String
+| Povinný
+| Potvrzovací kód tržby vygenerovaný serverem (formát `pok_...`, v playgroundu končí `-ff`).
+| `pok_f81d4fae-7dec-11d0-a765-00a0c91e6bf6`
+
+| `test`
+| Boolean
+| Volitelný
+| Příznak neprodukčního/testovacího prostředí (`true`).
+| `true`
+
+5+| *Sekce `<Chyba>` (Vrací se pouze při selhání/odmítnutí)*
+
+| `kod`
+| Integer
+| Povinný
+| Číselný kód chyby (pro ověřovací režim bez chyb vrací `0`).
+| `101`
+
+| *(obsah elementu)*
+| String
+| Volitelný
+| Slovní popis chyby vygenerovaný systémem.
+| `Chybný podpis WS-Security.`
+
+5+| *Sekce `<Varovani>` (Může se vyskytnout 0 až 10×)*
+
+| `kod_varov`
+| Integer
+| Povinný
+| Číselný kód varování / upozornění.
+| `201`
+
+| *(obsah elementu)*
+| String
+| Volitelný
+| Slovní text varování.
+| `Platnost certifikátu vyprší za 14 dní.`
+|===
+
+== Datové rozhraní původní EET (v3.1)
+
+=== Vstupní zpráva (Element `<Trzba>`)
+
+Jmenný prostor: `http://fs.mfcr.cz/eet/schema/v3`
+
+.Struktura vstupní zprávy `<Trzba>`
+[cols="2,1,1,3,2", options="header"]
+|===
+| Element / Atribut | Typ | Povinnost | Poznámka / Omezení | Příklad
+
+5+| *Sekce `<Hlavicka>`*
+
+| `uuid_zpravy`
+| String (UUID)
+| Povinný
+| Unikátní identifikátor zprávy (UUID v4, délka 36 znaků).
+| `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11`
+
+| `dat_odesl`
+| DateTime
+| Povinný
+| Datum a čas odeslání zprávy z pokladny (ISO 8601 s časovou zónou).
+| `2019-11-15T08:30:00+01:00`
+
+| `prvni_zaslani`
+| Boolean
+| Povinný
+| Příznak prvního pokusu (`true`) vs. opakované zaslání (`false`).
+| `true`
+
+| `overeni`
+| Boolean
+| Volitelný
+| Ověřovací režim (`true` = zpráva se pouze zvaliduje, neukládá).
+| `false`
+
+5+| *Sekce `<Data>`*
+
+| `dic_popl`
+| String
+| Povinný
+| DIČ poplatníka (přísná maska `CZ` + 8 až 10 číslic).
+| `CZ12345678`
+
+| `dic_poverujiciho`
+| String
+| Volitelný
+| DIČ pověřujícího poplatníka (v případě zastupování).
+| `CZ87654321`
+
+| `id_provoz`
+| Integer
+| Povinný
+| Označení provozovny (číslo 1 až 999999).
+| `11`
+
+| `id_pokl`
+| String
+| Povinný
+| Označení pokladního zařízení (1–20 alfanumerických znaků).
+| `POKLADNA-01`
+
+| `porad_cis`
+| String
+| Povinný
+| Pořadové číslo účtenky (1–25 alfanumerických znaků).
+| `2019-000123`
+
+| `dat_trzby`
+| DateTime
+| Povinný
+| Skutečný datum a čas přijetí tržby (ISO 8601 s časovou zónou).
+| `2019-11-15T08:29:45+01:00`
+
+| `celk_trzba`
+| Decimal
+| Povinný
+| Celková částka tržby v CZK (-100M až 100M s max. 2 desetinnými místy).
+| `1250.00`
+
+| `urceno_cerp_zuct`
+| Decimal
+| Volitelný
+| Částka určená k následnému čerpání nebo zúčtování (poukaz).
+| `0.00`
+
+| `cerp_zuct`
+| Decimal
+| Volitelný
+| Částka následně čerpaná nebo zúčtovaná.
+| `0.00`
+
+| `rezim`
+| Integer
+| Povinný
+| Režim tržby (`0` = běžný, `1` = zjednodušený).
+| `0`
+
+| `zakl_dan1`
+| Decimal
+| Volitelný
+| Základ daně podléhající základní sazbě DPH (21 %).
+| `826.45`
+
+| `dan1`
+| Decimal
+| Volitelný
+| DPH v základní sazbě (21 %).
+| `173.55`
+
+| `zakl_dan2`
+| Decimal
+| Volitelný
+| Základ daně podléhající první snížené sazbě DPH (15 %).
+| `217.39`
+
+| `dan2`
+| Decimal
+| Volitelný
+| DPH v první snížené sazbě (15 %).
+| `32.61`
+
+| `zakl_dan3`
+| Decimal
+| Volitelný
+| Základ daně podléhající druhé snížené sazbě DPH (10 %).
+| `0.00`
+
+| `dan3`
+| Decimal
+| Volitelný
+| DPH v druhé snížené sazbě (10 %).
+| `0.00`
+
+| `pouzit_zbosz`
+| Decimal
+| Volitelný
+| Celková částka v režimu přenesení daňové povinnosti (zvláštní režim).
+| `0.00`
+
+5+| *Sekce `<KontrolniKody>`*
+
+| `pkp`
+| Base64
+| Povinný
+| Podpisový kód poplatníka (RSA-SHA256 hash vybraných položek tržby, 256 B).
+| `m43K...==`
+
+| `bkp`
+| String
+| Povinný
+| Bezpečnostní kód poplatníka (SHA-1 hash z PKP rozdělený do 5 skupin po 8 zn.).
+| `12345678-9ABCDEF0-12345678-9ABCDEF0-12345678`
+|===
+
+=== Výstupní zpráva (Element `<Odpoved>`)
+
+Jmenný prostor: `http://fs.mfcr.cz/eet/schema/v3`
+
+.Struktura výstupní zprávy `<Odpoved>`
+[cols="2,1,1,3,2", options="header"]
+|===
+| Element / Atribut | Typ | Povinnost | Poznámka / Omezení | Příklad
+
+5+| *Sekce `<Hlavicka>`*
+
+| `uuid_zpravy`
+| String (UUID)
+| Volitelný
+| Unikátní identifikátor zprávy odpovídající původnímu požadavku.
+| `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11`
+
+| `dat_prij`
+| DateTime
+| Volitelný
+| Datum a čas přijetí zprávy na serveru FS.
+| `2019-11-15T08:30:01+01:00`
+
+| `dat_odmit`
+| DateTime
+| Volitelný
+| Datum a čas odmítnutí zprávy v případě kritické chyby.
+| `2019-11-15T08:30:01+01:00`
+
+5+| *Sekce `<Potvrzeni>` (Vrací se pouze při úspěšném zpracování)*
+
+| `fik`
+| String
+| Povinný
+| Fiskální identifikační kód vygenerovaný serverem FS (39 znaků).
+| `ffb717da-5259-42b7-a36c-d102e3b8a1c9-01`
+
+| `test`
+| Boolean
+| Volitelný
+| Příznak testovacího prostředí (`true` v playgroundu / přípravném prostředí).
+| `false`
+
+5+| *Sekce `<Chyba>` (Vrací se pouze při odmítnutí zprávy)*
+
+| `kod`
+| Integer
+| Povinný
+| Číselný kód chyby (např. -1 až 8, pro ověření bez chyb vráceno `0`).
+| `3`
+
+| `test`
+| Boolean
+| Volitelný
+| Příznak testovacího prostředí při výskytu chyby.
+| `false`
+
+| *(obsah elementu)*
+| String
+| Volitelný
+| Textový popis chyby vygenerovaný systémem.
+| `Neplatný podpis WS-Security.`
+
+5+| *Sekce `<Varovani>` (Může se vyskytnout 0 až N×)*
+
+| `kod_varov`
+| Integer
+| Povinný
+| Číselný kód varování/upozornění (např. chyba v rozpadu DPH).
+| `101`
+
+| *(obsah elementu)*
+| String
+| Volitelný
+| Textové upozornění z nedaňového nebo technického důvodu.
+| `Neplatný DIČ pověřujícího poplatníka.`
+|===

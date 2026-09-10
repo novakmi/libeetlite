@@ -3,9 +3,18 @@
 package com.github.novakmi.libeetlite
 
 import groovy.util.logging.Slf4j
+import org.apache.xml.security.Init
+import org.apache.xml.security.c14n.Canonicalizer
+import org.w3c.dom.Element
+import org.xml.sax.ErrorHandler
+import org.xml.sax.SAXException
 
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.stream.StreamSource
+import javax.xml.validation.SchemaFactory
 import java.security.KeyStore
 import java.security.Signature
 import java.security.cert.X509Certificate
@@ -17,6 +26,60 @@ import java.time.temporal.ChronoUnit
 
 @Slf4j
 class EetUtil {
+
+    static String sendSOAPRequest(String url, String xmlPayload) {
+        log.trace "==> sendSOAPRequest url={}", url
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection()
+        try {
+            connection.requestMethod = 'POST'
+            connection.doOutput = true
+            connection.setRequestProperty('Content-Type', 'text/xml; charset=utf-8')
+
+            connection.outputStream.withWriter('UTF-8') { writer ->
+                writer.write(xmlPayload)
+            }
+
+            InputStream responseStream = connection.responseCode >= 400
+                    ? connection.errorStream
+                    : connection.inputStream
+            return responseStream?.withCloseable { it.getText('UTF-8') } ?: ''
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    static String canonicalizeXml(String xml) {
+        log.trace "==> canonicalizeXml {}", xml
+
+        if (xml == null) {
+            throw new IllegalArgumentException("XML to canonicalize must not be null")
+        }
+
+        Init.init()
+        Canonicalizer canonicalizer = Canonicalizer.getInstance(
+                Canonicalizer.ALGO_ID_C14N_EXCL_OMIT_COMMENTS)
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance()
+        factory.setNamespaceAware(true)
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "")
+        factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "")
+        Element documentElement = factory.newDocumentBuilder()
+                .parse(new ByteArrayInputStream(xml.getBytes("UTF-8"))).documentElement
+        String inclusivePrefixes = documentElement
+                .getElementsByTagNameNS("http://www.w3.org/2001/10/xml-exc-c14n#", "InclusiveNamespaces")
+                .collect { it.getAttribute("PrefixList") }
+                .find { it }
+        ByteArrayOutputStream output = new ByteArrayOutputStream()
+        canonicalizer.canonicalizeSubtree(documentElement, inclusivePrefixes ?: "", output)
+        byte[] canonicalXml = output.toByteArray()
+        String retVal = new String(canonicalXml, "UTF-8")
+
+        log.trace "<== canonicalizeXml {}", retVal
+        return retVal
+    }
 
     static def getUnique() {
         log.trace  "==> getUnique"
@@ -171,18 +234,6 @@ class EetUtil {
     }
 
     /**
-     * Find out if config has "ZjednodusenyRezim"
-     * @param config
-     * @return true or false
-     */
-    static boolean isZjednodusenyRezim(config) {
-        log.trace "==> isZjednodusenyRezim config.rezim={}", config.rezim
-        def retVal = config.rezim != "0"
-        log.trace "<== isZjednodusenyRezim retVal={}", retVal
-        return retVal
-    }
-
-    /**
      * Find out if config has "overeni"
      * @param config
      * @return true or false
@@ -289,43 +340,97 @@ class EetUtil {
         log.trace "==> bytesToHex bytes={}", bytes
 
         StringBuffer sb = new StringBuffer()
-        for (byte b:bytes) { sb.append(String.format("%02X", b))}
+        for (byte b : bytes) { sb.append(String.format("%02X", b)) }
         def ret = sb.toString()
 
         log.trace "<== bytesToHex ret {}", ret
         return ret
     }
 
-    static def makeBkp(pkpValBytes) {
-        log.trace "==> makeBkp pkpValBytes={}", pkpValBytes
+    /**
+     * Validates an XML string against a given XSD schema stream.
+     *
+     * @param xmlString The XML content to validate
+     * @param xsdStream InputStream of the XSD schema
+     * @return List of error/warning messages. Empty list if XML is valid.
+     */
+    static List<String> validateXml(String xmlString, InputStream xsdStream) {
+        log.trace "==> validateXml xmlString={}, xsdStream={}", xmlString, xsdStream
+        List<String> retVal = []
 
-        final java.security.MessageDigest d = java.security.MessageDigest.getInstance("SHA-1")
-        d.reset()
-        d.update(pkpValBytes)
-        final byte[] bytes = d.digest()
-        def hex = bytesToHex(bytes)
-        def ret = "${hex[0..7]}-${hex[8..15]}-${hex[16..23]}-${hex[24..31]}-${hex[32..-1]}"
+        if (!xsdStream) {
+            retVal.add("VALIDATION_FAILED: XSD InputStream is null".toString())
+        } else {
+            if (!xmlString) {
+                retVal.add("VALIDATION_FAILED: XML string is null or empty".toString())
+            } else {
 
-        log.trace "<== makeBkp ret {}", ret
-        return ret
+                // 1. Sanitize XML payload (xmlString)
+                String cleanXml = xmlString.replace('\uFEFF', '').trim()
+
+                if (cleanXml.contains('<Trzba') && cleanXml.contains('</Trzba>')) {
+                    int startIdx = cleanXml.indexOf('<Trzba')
+                    int endIdx = cleanXml.indexOf('</Trzba>') + '</Trzba>'.length()
+                    cleanXml = cleanXml.substring(startIdx, endIdx)
+                } else {
+                    int firstTagIndex = cleanXml.indexOf('<')
+                    if (firstTagIndex > 0) {
+                        cleanXml = cleanXml.substring(firstTagIndex)
+                    }
+                }
+                log.info("XML to validate: {}", cleanXml)
+
+                try {
+                    SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI)
+
+                    factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "all")
+                    factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+
+                    def schema = factory.newSchema(new StreamSource(xsdStream))
+                    def validator = schema.newValidator()
+
+                    // Custom error handler to collect validation issues
+                    validator.errorHandler = [
+                        warning   : { SAXException e -> retVal.add("WARNING: ${e.message}".toString()) },
+                        error     : { SAXException e -> retVal.add("ERROR: ${e.message}".toString()) },
+                        fatalError: { SAXException e -> retVal.add("FATAL: ${e.message}".toString()) }
+                    ] as ErrorHandler
+
+                    validator.validate(new StreamSource(new StringReader(cleanXml)))
+                } catch (Exception e) {
+                    retVal.add("VALIDATION_FAILED: ${e.message}".toString())
+                }
+            }
+        }
+        log.trace "<== validateXml retVal={}", retVal
+        return retVal
     }
 
-    static def makePkp(config, keyMap) {
-        log.trace "==> makePkp"
+    /**
+    * Validates XML string against an XSD schema if the schema resource exists.
+    *
+    * @param xmlString The XML content to validate
+    * @param xsdResourcePath Path to the XSD schema resource (e.g., "/schema/EETXMLSchema.xsd")
+    * @return List of validation errors. Returns an empty list if XML is valid or if schema is missing (with a warning).
+    */
+    static List<String> validateXmlIfSchemaExists(String xmlString, String xsdResourcePath) {
+        log.trace "==> validateXmlIfSchemaExists xmlString={}, xsdResourcePath={}", xmlString, xsdResourcePath
+        InputStream xsdStream = EetUtil.class.getResourceAsStream(xsdResourcePath)
+        def retVal = []
 
-        def ret
-        def pkpPlain = "$config.dic_popl|$config.id_provoz|$config.id_pokl|$config.porad_cis|$config.dat_trzby|$config.celk_trzba"
-        log.trace "pkpPlain {}", pkpPlain
+        if (xsdStream == null) {
+            log.warn("XSD schema resource not found at '{}'. Skipping validation.", xsdResourcePath)
+        } else {
 
-        log.trace "config.cert_popl {}", config.cert_popl
-        //log.trace "config.cert_pass {}", config.cert_pass //comment :-)
-
-        final Signature signature = Signature.getInstance("SHA256withRSA")
-        signature.initSign(keyMap.keystore.getKey(keyMap.alias, config.cert_pass.toCharArray()))
-        signature.update(pkpPlain.getBytes("UTF-8"))
-        ret = signature.sign()
-
-        log.trace "<== makePkp {}", ret
-        return ret
+            try {
+                log.debug("XSD schema found at '{}', starting XML validation...", xsdResourcePath)
+                retVal = validateXml(xmlString, xsdStream)
+            } finally {
+                xsdStream.close()
+            }
+            log.trace "<== validateXmlIfSchemaExists retVal={}", retVal
+        }
+        return retVal
     }
+
 }

@@ -2,7 +2,7 @@
 
 buildscript {
     repositories {
-        jcenter()
+        mavenCentral()
     }
 }
 
@@ -10,31 +10,53 @@ plugins {
     id 'base'
     id 'groovy'
     id 'idea'
-    id 'com.github.ben-manes.versions' version '0.28.0' // gradle dependencyUpdates -Drevision=release
     id 'maven-publish' // to use maven repository
+    id 'io.github.ben-manes.versions' version '0.61.0'
+    // gradle dependencyUpdates -Drevision=release  --refresh-dependencies
 }
+
+def runtimeJavaVersion = JavaVersion.current()
+def java8Compatibility = runtimeJavaVersion == JavaVersion.VERSION_1_8
+def requestedGroovyVersion = findProperty('groovyVersion')
+def effectiveGroovyVersion = java8Compatibility
+        ? (requestedGroovyVersion ?: '4.0.33')
+        : project.groovyVersion
+def groovy6Compatibility = effectiveGroovyVersion.startsWith('6.')
+def xmlsecVersion = java8Compatibility ? '3.0.3' : '4.0.4'
+def testngVersion = java8Compatibility ? '7.5.1' : '7.12.0'
+def logbackVersion = java8Compatibility ? '1.3.14' : '1.4.14'
+def targetJavaVersion = java8Compatibility
+        ? JavaVersion.VERSION_1_8
+        : (groovy6Compatibility ? JavaVersion.VERSION_17 : JavaVersion.VERSION_11)
+
+println "=== Build Configuration ==="
+println "Gradle version: ${gradle.gradleVersion}"
+println "Groovy version: ${effectiveGroovyVersion}"
+println "Java runtime version: ${runtimeJavaVersion}"
+println "Java target compatibility: ${targetJavaVersion}"
+println "==========================="
 
 def installDir = file('./install')
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = targetJavaVersion
+    targetCompatibility = targetJavaVersion
     withSourcesJar()
 }
 
 repositories {
-    jcenter()
+    mavenCentral()
 }
 
 dependencies {
-    implementation group: 'org.codehaus.groovy', name: 'groovy', version: "${project.groovyVersion}"
-    implementation group: 'org.codehaus.groovy', name: 'groovy-xml', version: "${project.groovyVersion}"
-    implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.30'
+    implementation "org.apache.groovy:groovy:${effectiveGroovyVersion}"
+    implementation "org.apache.groovy:groovy-xml:${effectiveGroovyVersion}"
+    implementation "org.apache.santuario:xmlsec:${xmlsecVersion}"
+    implementation 'org.slf4j:slf4j-api:2.0.12'
 
-    testImplementation group: 'org.testng', name: 'testng', version: '7.1.1'
-    testImplementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
-    testImplementation group: 'org.codehaus.janino', name: 'janino', version: '3.1.0'
-    testImplementation group: 'com.github.groovy-wslite', name: 'groovy-wslite', version: '1.1.3'
+    testImplementation "org.testng:testng:${testngVersion}"
+    testImplementation "ch.qos.logback:logback-classic:${logbackVersion}"
+    testImplementation 'org.codehaus.janino:janino:3.1.12'
 }
 
 jar {
@@ -60,20 +82,32 @@ task groovydocJar(type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
 }
 
+// gradle test
+// to run specific test use e.g. gradle test --tests "com.github.novakmi.libeetlite.test.EetliteXmlTest.getPokTest"
+// to run more tests use e.g. gradle test --tests "com.github.novakmi.libeetlite.test.EetliteXmlTest.getPokTest" --tests "com.github.novakmi.libeetlite.test.EetXmlV4Test.createsV4BodyWithoutLegacyCodes"
+// one can use patterns in tests *, etc.
 test {
     systemProperties["testDataDir"] = "${projectDir}/src/test/testData"
+    systemProperties["schemaFile"] = "${projectDir}/info/EET2/EETXMLSchema.xsd"
+    testLogging {
+        // Zobrazí println i logy přímo v příkazové řádce
+        showStandardStreams = true
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+    }
     useTestNG() {
         suiteXmlBuilder().suite(name: 'Test libeetlite') {
             test(name: 'libeetlite'/*, annotations: 'JDK', verbose: '1'*/) {
                 groups {
                     run {
-                        include(name: "basic")
-                        exclude(name: "internet")
+                        include(name: "unit")
+                        include(name: "local")
                     }
                 }
+
                 classes([:]) {
                     'class'(name: "com.github.novakmi.libeetlite.test.EetliteUtilTest")
                     'class'(name: "com.github.novakmi.libeetlite.test.EetliteXmlTest")
+                    'class'(name: "com.github.novakmi.libeetlite.test.EetXmlV4Test")
                 }
             }
         }
@@ -82,6 +116,36 @@ test {
     //        listeners << 'org.uncommons.reportng.HTMLReporter'
     //        listeners << 'org.uncommons.reportng.JUnitXMLReporter'
     //    }
+}
+
+// gradle internetTest
+// gradle internetTest --tests "com.github.novakmi.libeetlite.test.EetXmlV4Test"
+tasks.register('internetTest', Test) {
+    description = 'Runs integration tests against the EET Playground.'
+    group = 'verification'
+    dependsOn testClasses
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    systemProperties["testDataDir"] = "${projectDir}/src/test/testData"
+    systemProperties["schemaFile"] = "${projectDir}/info/EET2/EETXMLSchema.xsd"
+    testLogging {
+        showStandardStreams = true
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+    }
+    useTestNG() {
+        suiteXmlBuilder().suite(name: 'Internet tests') {
+            test(name: 'libeetlite-internet') {
+                groups {
+                    run {
+                        include(name: "internet")
+                    }
+                }
+                classes([:]) {
+                    'class'(name: "com.github.novakmi.libeetlite.test.EetliteXmlTest")
+                }
+            }
+        }
+    }
 }
 
 task prepareInstall(type: Copy, dependsOn: [jar, sourcesJar, groovydocJar]) {
@@ -104,9 +168,7 @@ publishing {   // use gradle publish
         publications {
             eetLiteLibrary(MavenPublication) {
                 from components.java
-                artifact groovydocJar {
-                    classifier "groovydoc"
-                }
+                artifact groovydocJar
             }
         }
         repositories {
