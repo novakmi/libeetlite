@@ -15,7 +15,7 @@
 - `--no-daemon` is optional; use it for isolated one-off or CI runs.
 - GitLab CI runs build/unit/local and internet integration checks on every push to every branch. Internet tests also run on scheduled pipelines. Configure the weekly schedule in GitLab under Build > Pipeline schedules with cron `0 3 * * 0`.
 - GitHub Actions `.github/workflows/ci.yml` runs the main Java 21/Groovy 5 build and internet tests on every push. `.github/workflows/ci-extensive.yml` runs the Java 8/Groovy 4 and Java 21/Groovy 5 matrices on Ubuntu, Windows, and macOS weekly (`0 3 * * 0`) or manually.
-- The Java 8 macOS matrix entry uses the Intel `macos-13` runner because the ARM64 `macos-latest` runner does not provide a matching Temurin JDK 8 distribution.
+- The Java 8 macOS matrix entry uses the Intel `macos-15-intel` runner because the ARM64 `macos-latest` runner does not provide a matching Temurin JDK 8 distribution.
 - Build artifacts are produced under `build/`; local install artifacts use `install/`.
 
 ## Conventions

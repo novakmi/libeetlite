@@ -17,7 +17,7 @@ jobs:
         include:
           - { os: ubuntu-latest, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
           - { os: windows-latest, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
-          - { os: macos-13, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
+          - { os: macos-15-intel, java: "8", groovy: "4.0.13", gradle: "8.14.5" }
           - { os: ubuntu-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
           - { os: windows-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
           - { os: macos-latest, java: "21", groovy: "5.1.2", gradle: "9.6.1" }
