@@ -64,6 +64,26 @@ jobs:
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
+      - name: Diagnose EET Playground connectivity
+        run: |
+          host=pg.trzbyeet.gov.cz
+          url="https://${host}/eet/services/EETServiceSOAP/v4"
+
+          echo "DNS lookup:"
+          nslookup "$host" || true
+
+          echo "HTTPS over IPv4:"
+          curl --ipv4 -v --connect-timeout 10 --max-time 20 \
+            -o /dev/null \
+            -w '\nremote_ip=%{remote_ip} http_code=%{http_code} connect=%{time_connect}s tls=%{time_appconnect}s\n' \
+            "$url" || true
+
+          echo "HTTPS over IPv6:"
+          curl --ipv6 -v --connect-timeout 10 --max-time 20 \
+            -o /dev/null \
+            -w '\nremote_ip=%{remote_ip} http_code=%{http_code} connect=%{time_connect}s tls=%{time_appconnect}s\n' \
+            "$url" || true
+
       - name: Run internet tests
         run: gradle internetTest --no-daemon
 
